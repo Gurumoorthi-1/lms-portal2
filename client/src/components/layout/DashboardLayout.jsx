@@ -12,6 +12,7 @@ import {
   User, 
   ChevronLeft, 
   Menu, 
+  Code,
   X,
   Sparkles,
   Settings,
@@ -174,6 +175,7 @@ export default function DashboardLayout({ children }) {
   const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', href: '/student' },
     { icon: BarChart3, label: 'Analytics', href: '/analytics' },
+    { icon: Code, label: 'Code Lab', href: '/codelab' },
   ];
 
   const bottomItems = [];

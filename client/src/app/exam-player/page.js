@@ -144,40 +144,37 @@ export default function ExamPlayer() {
   }, [totalTime]);
 
   const [violationCount, setViolationCount] = useState(0);
-  const [lastViolationTime, setLastViolationTime] = useState(0);
+  const lastViolationRef = useRef(0);
 
   const handleViolation = useCallback(async (reason, severity = 'warning') => {
     const now = Date.now();
     // Throttle duplicate violations (e.g. only once every 3s)
-    if (now - lastViolationTime < 3000) return;
+    if (now - lastViolationRef.current < 3000) return;
     
-    setLastViolationTime(now);
-    setViolationCount(prev => {
-      const newCount = prev + 1;
-      
-      // LOG TO BACKEND
-      if (activeExam._id || activeExam.id) {
-         authFetch(`/exams/${activeExam._id || activeExam.id}/violation`, {
-           method: 'POST',
-           body: JSON.stringify({ reason, timestamp: new Date(), count: newCount })
-         }).catch(() => {});
-      }
+    lastViolationRef.current = now;
 
-      toast.error(`Proctoring Alert: ${reason}`, {
-        duration: 4000,
-        style: { 
-          background: '#0F172A', 
-          color: '#fff', 
-          border: '2px solid #EF4444',
-          fontSize: '12px',
-          fontWeight: 900
-        },
-        icon: <ShieldAlert className="text-red-500" />
-      });
+    // Side effects should be outside of the state setter
+    if (activeExam?._id || activeExam?.id) {
+       authFetch(`/exams/${activeExam._id || activeExam.id}/violation`, {
+         method: 'POST',
+         body: JSON.stringify({ reason, timestamp: new Date() })
+       }).catch(() => {});
+    }
 
-      return newCount;
+    toast.error(`Proctoring Alert: ${reason}`, {
+      duration: 4000,
+      style: { 
+        background: '#0F172A', 
+        color: '#fff', 
+        border: '2px solid #EF4444',
+        fontSize: '12px',
+        fontWeight: 900
+      },
+      icon: <ShieldAlert className="text-red-500" />
     });
-  }, [lastViolationTime, activeExam]);
+
+    setViolationCount(prev => prev + 1);
+  }, [activeExam]);
 
   useEffect(() => {
     if (violationCount >= 5 && !isSubmitting && !showSuccess) {

@@ -8,6 +8,10 @@ import { AuthModule } from './auth/auth.module';
 import { AiModule } from './ai/ai.module';
 import { ExamsModule } from './exams/exams.module';
 
+import { CompilerModule } from './compiler/compiler.module';
+import { ChallengesModule } from './challenges/challenges.module';
+import { ProgressModule } from './progress/progress.module';
+
 @Module({
   imports: [
     // Load .env
@@ -41,6 +45,9 @@ import { ExamsModule } from './exams/exams.module';
     AuthModule,
     AiModule,
     ExamsModule,
+    CompilerModule,
+    ChallengesModule,
+    ProgressModule,
   ],
   controllers: [AppController],
   providers: [AppService],

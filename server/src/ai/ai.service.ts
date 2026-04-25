@@ -117,7 +117,11 @@ export class AiService {
       3. Example:
          "Analyze the following Java code:
          \`\`\`java
-         public class Test { ... }
+         public class Test {
+             public static void main(String[] args) {
+                 System.out.println(\"Hello\");
+             }
+         }
          \`\`\`
          What will be the output?"
       4. Language IDs are MANDATORY (java, python, javascript, cpp, etc.).
@@ -130,7 +134,7 @@ export class AiService {
           {
             "id": 1,
             "text": "Question text here",
-            "code": "Only the code snippet here (if applicable, else empty string)",
+            "code": "Only the code snippet here. CRITICAL: Use multiple lines, proper indentation, and escaped newlines (\\n). NEVER generate code on a single line.",
             "language": "javascript/java/python/etc",
             "options": [
               {"id": "a", "text": "Option A"},
@@ -229,5 +233,32 @@ export class AiService {
       });
       return JSON.parse(response.choices?.[0]?.message?.content || '{}').plan || [];
     } catch (e) { return []; }
+  }
+
+  async analyzeCode(language: string, code: string): Promise<string> {
+    try {
+      const fullPrompt = `You are an expert ${language} code reviewer.
+Analyze the following code step-by-step:
+1. Potential logic bugs or edge cases.
+2. Code style, naming, and best practices.
+3. Performance/complexity.
+4. Provide a summarized verdict on how to improve the code.
+
+Return your response entirely formatted in Markdown.
+
+Code:
+\`\`\`${language}
+${code}
+\`\`\`
+`;
+      const response: any = await this.openai.chat.completions.create({
+        model: 'openai/gpt-4o-mini',
+        messages: [{ role: 'user', content: fullPrompt }],
+      });
+      return response.choices?.[0]?.message?.content || 'No review available.';
+    } catch (error) {
+      console.error('AI Review Error:', error);
+      return 'Failed to analyze code at this time.';
+    }
   }
 }

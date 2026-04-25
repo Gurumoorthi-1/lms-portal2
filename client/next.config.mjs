@@ -10,6 +10,14 @@ const nextConfig = {
     }
     return config;
   },
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: 'http://localhost:5001/:path*', // Proxy to NestJS Backend root
+      },
+    ]
+  },
 };
 
 export default nextConfig;

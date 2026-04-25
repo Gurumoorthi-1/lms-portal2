@@ -21,4 +21,11 @@ export class AiController {
   async getStudyPlan(@Body() stats: any) {
     return this.aiService.generateStudyPlan(stats);
   }
+
+  @Post('review')
+  async reviewCode(@Body() body: { language: string, code: string }) {
+    if (!body.language || !body.code) return { review: 'Missing code or language.' };
+    const review = await this.aiService.analyzeCode(body.language, body.code);
+    return { review };
+  }
 }

@@ -1,0 +1,91 @@
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types } from 'mongoose';
+import { Progress } from './progress.schema';
+import { CompilerService } from '../compiler/compiler.service';
+import { ChallengesService } from '../challenges/challenges.service';
+
+@Injectable()
+export class ProgressService {
+  constructor(
+    @InjectModel(Progress.name) private progressModel: Model<Progress>,
+    private compilerService: CompilerService,
+    private challengesService: ChallengesService,
+  ) {}
+
+  async getUserProgress(userId: string) {
+    let progress = await this.progressModel.findOne({ user: new Types.ObjectId(userId) });
+    if (!progress) {
+      progress = await this.progressModel.create({ user: new Types.ObjectId(userId) });
+    }
+    return progress;
+  }
+
+  async getLeaderboard(limit: number = 10) {
+    return this.progressModel
+      .find({})
+      .sort({ points: -1 })
+      .limit(limit)
+      .populate('user', 'username email'); // Assume User model has these fields
+  }
+
+  async incrementFreeRunCount(userId: string) {
+    return this.progressModel.findOneAndUpdate(
+      { user: new Types.ObjectId(userId) },
+      { $inc: { freeRunCount: 1 }, lastActivity: Date.now() },
+      { upsert: true, new: true }
+    );
+  }
+
+  async submitChallenge(userId: string, challengeId: number, code: string, language: string) {
+    const challenge = await this.challengesService.findOne(challengeId);
+    if (!challenge) {
+      throw new NotFoundException('Challenge not found');
+    }
+
+    if (challenge.language !== language) {
+      throw new BadRequestException('Language mismatch for this challenge');
+    }
+
+    // Run the code compiler with the user's code
+    const result = await this.compilerService.executeCode(language, code);
+
+    if (!result.success) {
+      return { ...result, success: false, passed: false };
+    }
+
+    // Validate the output using the challenge's hidden validation function
+    const validateFn = this.challengesService.getValidationFunction(challengeId);
+    const passed = validateFn ? validateFn(result.output) : false;
+
+    if (passed) {
+      // Points distribution
+      let pointsToAward = 10;
+      if (challenge.difficulty === 'Medium') pointsToAward = 20;
+      else if (challenge.difficulty === 'Hard') pointsToAward = 30;
+
+      // Update progress if not previously solved
+      const progress = await this.getUserProgress(userId);
+      const alreadySolved = progress.solvedChallenges.some(sc => sc.challengeId === challengeId);
+
+      if (!alreadySolved) {
+        await this.progressModel.findOneAndUpdate(
+          { user: new Types.ObjectId(userId) },
+          {
+            $inc: { points: pointsToAward },
+            $push: { solvedChallenges: { challengeId, solvedAt: new Date() } },
+            lastActivity: Date.now()
+          }
+        );
+      }
+    }
+
+    return {
+      ...result,
+      success: true,
+      passed,
+      expected: challenge.expectedOutput,
+      message: passed ? 'Congratulations! You solved the challenge.' : 'Output did not match expected result.'
+    };
+  }
+}

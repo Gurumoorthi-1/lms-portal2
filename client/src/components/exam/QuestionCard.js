@@ -227,9 +227,9 @@ const QuestionCard = ({ question, currentIdx, totalQuestions, selectedAnswer, on
               <ReactMarkdown components={markdownComponents}>
                 {[
                   question.text,
-                  question.codeSnippet ? `\n\n\`\`\`javascript\n${question.codeSnippet}\n\`\`\`` : '',
-                  question.code ? `\n\n\`\`\`javascript\n${question.code}\n\`\`\`` : '',
-                  question.snippet ? `\n\n\`\`\`javascript\n${question.snippet}\n\`\`\`` : ''
+                  question.codeSnippet ? `\n\n\`\`\`${question.language || 'javascript'}\n${question.codeSnippet}\n\`\`\`` : '',
+                  question.code ? `\n\n\`\`\`${question.language || 'javascript'}\n${question.code}\n\`\`\`` : '',
+                  question.snippet ? `\n\n\`\`\`${question.language || 'javascript'}\n${question.snippet}\n\`\`\`` : ''
                 ].filter(Boolean).join('\n')}
               </ReactMarkdown>
             </div>
