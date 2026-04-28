@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import * as faceapi from 'face-api.js';
 import { ShieldAlert, User, Users, AlertCircle, Loader2, CameraOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
@@ -12,15 +11,20 @@ const FaceDetection = ({
   mode = 'floating', 
   onVerificationComplete, 
   onViolation, 
-  isActive = true 
+  isActive = true,
+  videoRef: externalVideoRef
 }) => {
-  const videoRef = useRef(null);
+  const internalVideoRef = useRef(null);
+  const videoRef = externalVideoRef || internalVideoRef;
+  const cocoModelRef = useRef(null);
+  const faceapiRef = useRef(null);
   const [modelLoaded, setModelLoaded] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [detectionState, setDetectionState] = useState({
     facePresent: false,
     multipleFaces: false,
-    lookingAway: false
+    lookingAway: false,
+    gadgetDetected: false
   });
   const [missingFaceTimer, setMissingFaceTimer] = useState(0);
 
@@ -29,11 +33,30 @@ const FaceDetection = ({
     if (typeof window === 'undefined') return;
     const loadModels = async () => {
       try {
+        // Dynamically import to avoid tfjs version conflicts
+        const faceapi = await import('@vladmandic/face-api');
+        faceapiRef.current = faceapi;
+
+        // Use faceapi's built-in tf backend
+        if (faceapi.tf) {
+          await faceapi.tf.ready();
+        }
+
+        // Load coco-ssd dynamically
+        try {
+          const cocoSsd = await import('@tensorflow-models/coco-ssd');
+          cocoModelRef.current = await cocoSsd.load();
+        } catch (e) {
+          console.warn('coco-ssd load failed, gadget detection disabled:', e.message);
+        }
+
         await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
         await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
         setModelLoaded(true);
       } catch (err) {
         console.error('Proctoring models fail:', err);
+        // Still allow the component to render with simulated data
+        setModelLoaded(true);
       }
     };
     loadModels();
@@ -71,15 +94,28 @@ const FaceDetection = ({
   // 3. Main Proctoring Engine
   const runProctoring = useCallback(async () => {
     if (!videoRef.current || !modelLoaded || !isCameraActive) return;
+    const fa = faceapiRef.current;
+    if (!fa) return;
 
     try {
-      const detections = await faceapi.detectAllFaces(
+      const detections = await fa.detectAllFaces(
         videoRef.current,
-        new faceapi.TinyFaceDetectorOptions()
+        new fa.TinyFaceDetectorOptions()
       ).withFaceLandmarks();
 
       const faceCount = detections.length;
       let isLookingAway = false;
+      let gadgetFound = false;
+
+      if (cocoModelRef.current) {
+        try {
+          const predictions = await cocoModelRef.current.detect(videoRef.current);
+          const forbidden = predictions.find(p => p.class === 'cell phone');
+          if (forbidden) gadgetFound = true;
+        } catch {
+          // coco-ssd detection failed, skip gadget check
+        }
+      }
 
       if (faceCount === 1) {
         const landmarks = detections[0].landmarks;
@@ -94,15 +130,17 @@ const FaceDetection = ({
       setDetectionState({
         facePresent: faceCount > 0,
         multipleFaces: faceCount > 1,
-        lookingAway: isLookingAway
+        lookingAway: isLookingAway,
+        gadgetDetected: gadgetFound
       });
 
-      if (faceCount > 1) onViolation?.('Multiple faces detected', 'severe');
-      else if (isLookingAway) onViolation?.('Maintain focus on screen', 'warning');
+      if (gadgetFound) onViolation?.('Gadget detected (Cell phone)', 'severe', 'gadget_detected');
+      else if (faceCount > 1) onViolation?.('Multiple faces detected', 'severe', 'multiple_faces');
+      else if (isLookingAway) onViolation?.('Maintain focus on screen', 'warning', 'looking_away');
 
       if (faceCount === 0) {
         setMissingFaceTimer(prev => prev + 2);
-        if (missingFaceTimer >= 5) onViolation?.('Face presence required', 'severe');
+        if (missingFaceTimer >= 5) onViolation?.('Face presence required', 'severe', 'face_hidden');
       } else {
         setMissingFaceTimer(0);
       }
@@ -115,7 +153,13 @@ const FaceDetection = ({
     return () => clearInterval(interval);
   }, [isCameraActive, runProctoring]);
 
-  const hasViolation = !detectionState.facePresent || detectionState.multipleFaces || detectionState.lookingAway;
+  useEffect(() => {
+    if (mode === 'gate' && detectionState.facePresent) {
+      onVerificationComplete?.(true);
+    }
+  }, [mode, detectionState.facePresent, onVerificationComplete]);
+
+  const hasViolation = !detectionState.facePresent || detectionState.multipleFaces || detectionState.lookingAway || detectionState.gadgetDetected;
 
   if (mode === 'gate') {
     return (
@@ -140,7 +184,34 @@ const FaceDetection = ({
           {detectionState.facePresent ? <ShieldAlert size={20} /> : <Loader2 size={18} className="animate-spin" />}
           <span>{detectionState.facePresent ? 'Biometric Signature Verified' : 'Searching for biometric signature...'}</span>
         </div>
-        {detectionState.facePresent && onVerificationComplete?.(true)}
+      </div>
+    );
+  }
+
+  if (mode === 'panel') {
+    return (
+      <div className={`relative w-full aspect-video bg-slate-950 rounded-xl overflow-hidden border transition-all duration-500 ${hasViolation ? 'border-red-500 ring-2 ring-red-500/20' : 'border-gray-200'}`}>
+        <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover transform scale-x-[-1]" />
+        <AnimatePresence>
+          {hasViolation && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-red-500/10 flex flex-col items-center justify-center p-2 text-center">
+              <span className="text-[10px] font-black text-white bg-red-600 px-2 py-0.5 rounded shadow-lg uppercase tracking-tighter">
+                {detectionState.gadgetDetected ? 'Gadget' : detectionState.multipleFaces ? 'Multiple Faces' : detectionState.lookingAway ? 'Eyes on Screen' : 'Face Missing'}
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <div className="absolute top-2 right-2">
+           <div className={`px-2 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest text-white border backdrop-blur-md ${hasViolation ? 'bg-red-600 border-red-500' : 'bg-emerald-600/60 border-emerald-500/30'}`}>
+              {hasViolation ? 'Alert' : 'Secured'}
+           </div>
+        </div>
+        {!isCameraActive && (
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-900 gap-2">
+            <Loader2 className="animate-spin text-blue-500" size={16} />
+            <span className="text-[8px] font-bold text-slate-500 uppercase">AI Init...</span>
+          </div>
+        )}
       </div>
     );
   }
@@ -153,7 +224,7 @@ const FaceDetection = ({
           {hasViolation && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-red-500/20 flex flex-col items-center justify-end p-4 text-center pb-8">
               <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity }} className="bg-red-600 text-white p-2 rounded-full mb-2"><ShieldAlert size={16} /></motion.div>
-              <span className="text-[10px] font-black text-white uppercase tracking-tighter drop-shadow-lg">{detectionState.multipleFaces ? 'Multiple People' : detectionState.lookingAway ? 'Eyes on Screen' : 'Face Missing'}</span>
+              <span className="text-[10px] font-black text-white uppercase tracking-tighter drop-shadow-lg">{detectionState.gadgetDetected ? 'Gadget Detected' : detectionState.multipleFaces ? 'Multiple People' : detectionState.lookingAway ? 'Eyes on Screen' : 'Face Missing'}</span>
             </motion.div>
           )}
         </AnimatePresence>

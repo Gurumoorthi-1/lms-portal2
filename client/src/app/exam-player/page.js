@@ -66,8 +66,8 @@ export default function ExamPlayer() {
   const [showConfirm, setShowConfirm] = useState(false);
   const submitLockRef = useRef(false);
 
-  const [tabViolationCount, setTabViolationCount] = useState(0);
-  const [fsViolationCount, setFsViolationCount] = useState(0);
+  const [totalViolations, setTotalViolations] = useState(0);
+  const [fsViolations, setFsViolations] = useState(0);
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 800);
@@ -140,71 +140,85 @@ export default function ExamPlayer() {
   const handleRetest = useCallback(() => {
     setAnswers({}); setTimeLeft(totalTime); setShowSuccess(false); setFinalResult(null);
     setCurrentIdx(0); setIsSubmitting(false); submitLockRef.current = false;
-    setTabViolationCount(0); setFsViolationCount(0); setIsStarted(true);
+    setTotalViolations(0); setFsViolations(0); setIsStarted(true);
   }, [totalTime]);
 
-  const [violationCount, setViolationCount] = useState(0);
+  const [totalViolationsState, setTotalViolationsState] = useState(0); // Alias for legacy
   const lastViolationRef = useRef(0);
 
-  const handleViolation = useCallback(async (reason, severity = 'warning') => {
+  const handleViolation = useCallback(async (reason, severity = 'warning', type = 'general') => {
     const now = Date.now();
-    // Throttle duplicate violations (e.g. only once every 3s)
     if (now - lastViolationRef.current < 3000) return;
-    
     lastViolationRef.current = now;
 
-    // Side effects should be outside of the state setter
+    const isFullScreenExit = type === 'screen_exit';
+
     if (activeExam?._id || activeExam?.id) {
+       const userStr = localStorage.getItem('user');
+       const cachedUser = userStr ? JSON.parse(userStr) : null;
        authFetch(`/exams/${activeExam._id || activeExam.id}/violation`, {
          method: 'POST',
-         body: JSON.stringify({ reason, timestamp: new Date() })
+         body: JSON.stringify({ reason, violationType: type, userId: cachedUser?.id || cachedUser?._id, timestamp: new Date() })
        }).catch(() => {});
     }
 
-    toast.error(`Proctoring Alert: ${reason}`, {
-      duration: 4000,
-      style: { 
-        background: '#0F172A', 
-        color: '#fff', 
-        border: '2px solid #EF4444',
-        fontSize: '12px',
-        fontWeight: 900
-      },
-      icon: <ShieldAlert className="text-red-500" />
-    });
-
-    setViolationCount(prev => prev + 1);
+    if (isFullScreenExit) {
+      setFsViolations(prev => {
+        const newCount = prev + 1;
+        toast.error(`Security Alert: ${reason}. Final warning!`, { id: 'security_alert', duration: 5000, icon: '⚠️', style: { border: '2px solid #ef4444', background: '#0f172a', color: '#fff' } });
+        return newCount;
+      });
+    } else {
+      setTotalViolations(prev => {
+        const newCount = prev + 1;
+        toast.error(`Security Alert: ${reason}. Violation ${newCount}/5`, { id: 'security_alert', duration: 5000, icon: '🛡️', style: { border: '2px solid #ef4444', background: '#0f172a', color: '#fff' } });
+        return newCount;
+      });
+    }
   }, [activeExam]);
 
   useEffect(() => {
-    if (violationCount >= 5 && !isSubmitting && !showSuccess) {
-      toast.error("EXAM TERMINATED: Too many proctoring violations.", { duration: 6000 });
-      handleFinish(true, true, 'disqualified');
+    if (totalViolations >= 5 || fsViolations >= 2) {
+      if (!isSubmitting && !showSuccess) {
+        toast.error("EXAM TERMINATED: Security protocol breached.", { duration: 6000, style: { background: '#ef4444', color: '#fff', fontWeight: 'bold' } });
+        handleFinish(true, true, 'disqualified');
+      }
     }
-  }, [violationCount, isSubmitting, showSuccess, handleFinish]);
+  }, [totalViolations, fsViolations, isSubmitting, showSuccess, handleFinish]);
 
   // Merge Tab switching into the unified violation system
   useEffect(() => {
     if (!isStarted || showSuccess || isSubmitting) return;
 
     const handleVisibilityChange = () => {
-      if (document.hidden) {
-        handleViolation("Tab switching detected", "severe");
-      }
+      if (document.hidden) handleViolation("Tab switching detected", "severe", "tab_switch");
     };
     
     const handleFullscreenChange = () => {
       if (!document.fullscreenElement) {
         setIsFullScreen(false);
-        handleViolation("Exited full-screen mode", "severe");
+        handleViolation("Exited full-screen mode", "severe", "screen_exit");
+        setTimeout(() => {
+          if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen().catch(()=> {
+              handleViolation("Refused full-screen mode", "severe", "screen_exit");
+            });
+          }
+        }, 2000);
       } else setIsFullScreen(true);
+    };
+
+    const handleBlur = () => {
+      handleViolation("Window lost focus", "severe", "tab_switch");
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     document.addEventListener('fullscreenchange', handleFullscreenChange);
+    window.addEventListener('blur', handleBlur);
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      window.removeEventListener('blur', handleBlur);
     };
   }, [isStarted, showSuccess, isSubmitting, handleViolation]);
 
@@ -291,7 +305,9 @@ export default function ExamPlayer() {
                 <span className="text-[#64748B] uppercase tracking-tighter">AI Security Status</span>
              </div>
              <div className="w-px h-3 bg-[#E2E8F0]" />
-             <div className="flex items-center gap-2 text-[#64748B] uppercase tracking-tighter">Violations: <span className={violationCount > 0 ? 'text-red-500' : ''}>{violationCount}/5</span></div>
+             <div className="flex items-center gap-2 text-[#64748B] uppercase tracking-tighter">FS Exits: <span className={fsViolations > 0 ? 'text-red-500' : ''}>{fsViolations}/2</span></div>
+             <div className="w-px h-3 bg-[#E2E8F0]" />
+             <div className="flex items-center gap-2 text-[#64748B] uppercase tracking-tighter">Violations: <span className={totalViolations > 0 ? 'text-red-500' : ''}>{totalViolations}/5</span></div>
           </div>
           <button onClick={() => setShowTutor(!showTutor)} className={`flex items-center gap-2 px-4 py-2 rounded-xl border-2 text-xs font-bold transition-all ${showTutor ? 'border-purple-600 bg-purple-50 text-purple-600' : 'border-[#E2E8F0] text-[#64748B]'}`}><MessageSquare size={16} /> AI Tutor</button>
           <ExamTimer timeLeft={timeLeft} />

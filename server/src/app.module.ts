@@ -15,6 +15,8 @@ import { ResumeModule } from './resume/resume.module';
 import { AptitudeModule } from './aptitude/aptitude.module';
 import { InterviewModule } from './interview/interview.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { CoursesModule } from './courses/courses.module';
+import { ProblemsModule } from './problems/problems.module';
 
 @Module({
   imports: [
@@ -51,11 +53,13 @@ import { AnalyticsModule } from './analytics/analytics.module';
     ExamsModule,
     CompilerModule,
     ChallengesModule,
+    ProblemsModule,
     ProgressModule,
     ResumeModule,
     AptitudeModule,
     InterviewModule,
     AnalyticsModule,
+    CoursesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

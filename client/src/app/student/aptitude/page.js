@@ -3,10 +3,13 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useInterviewStore } from '@/hooks/useInterviewStore';
-import { useProctoring } from '@/hooks/useProctoring';
 import Skeleton from '@/components/ui/Skeleton';
-import ProctoringPanel from '@/components/exam/ProctoringPanel';
-import { ArrowLeft } from 'lucide-react';
+import dynamic from 'next/dynamic';
+import Modal from '@/components/ui/Modal';
+import { ArrowLeft, ShieldAlert, Maximize2, Minimize2 } from 'lucide-react';
+import toast from 'react-hot-toast';
+
+const FaceDetection = dynamic(() => import('@/components/exam/FaceDetection'), { ssr: false });
 
 function Timer({ totalSeconds, onTimeUp }) {
   const [timeLeft, setTimeLeft] = useState(totalSeconds);
@@ -46,9 +49,125 @@ export default function AptitudePage() {
   const [submitted, setSubmitted] = useState(false);
   const startTimeRef = useRef(Date.now());
 
-  const { videoRef, cameraReady, permissionError, warnings, requestFullscreen } = useProctoring({
-    sessionId: 'session-id', round: 'round1', enabled: phase === 'test'
-  });
+  const [totalViolations, setTotalViolations] = useState(0);
+  const [fsViolations, setFsViolations] = useState(0);
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const lastViolationRef = useRef(0);
+  const pageLoadTimeRef = useRef(Date.now());
+
+  const handleViolation = useCallback(async (reason, severity = 'warning', type = 'general') => {
+    const now = Date.now();
+    if (now - lastViolationRef.current < 3000) return;
+
+    // Ignore blur violations during first 15s (permission popups)
+    if (type === 'tab_switch' && reason === 'Window lost focus') {
+      if (now - pageLoadTimeRef.current < 15000) return;
+    }
+
+    lastViolationRef.current = now;
+
+    const isFullScreenExit = type === 'screen_exit';
+
+    if (isFullScreenExit) {
+      setFsViolations(prev => {
+        const newCount = prev + 1;
+        toast.error(`Security Alert: ${reason}. Final warning!`, { id: 'security_alert', duration: 5000, icon: '⚠️', style: { border: '2px solid #ef4444', background: '#0f172a', color: '#fff' } });
+        return newCount;
+      });
+    } else {
+      setTotalViolations(prev => {
+        const newCount = prev + 1;
+        toast.error(`Security Alert: ${reason}. Violation ${newCount}/5`, { id: 'security_alert', duration: 5000, icon: '🛡️', style: { border: '2px solid #ef4444', background: '#0f172a', color: '#fff' } });
+        return newCount;
+      });
+    }
+  }, []);
+
+  const handleSubmit = useCallback(async (isDisqualifiedParam = false) => {
+    if (submitted) return;
+    const isDisqualified = typeof isDisqualifiedParam === 'boolean' ? isDisqualifiedParam : false;
+    
+    setSubmitted(true);
+    setLoading(true);
+    try {
+      const answersArr = questions.map(q => ({
+        questionId: q.id,
+        selectedAnswer: answers[q.id] ?? -1,
+        usedHint: !!hintsUsed[q.id]
+      }));
+      
+      const res = await fetch('http://localhost:5001/aptitude/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers: answersArr, questions })
+      });
+      
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Submit failed');
+      
+      if (isDisqualified) {
+         data.passed = false;
+         data.message = 'Exam Terminated due to Security Violations.';
+         data.score = 0;
+      }
+
+      setResults(data);
+      setAptitudeResults(data);
+      setPhase('results');
+      if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+    } catch (err) {
+      alert('Submission error: ' + err.message);
+      setSubmitted(false);
+    } finally {
+      setLoading(false);
+    }
+  }, [submitted, questions, answers, hintsUsed, setAptitudeResults]);
+
+  useEffect(() => {
+    if (totalViolations >= 5 || fsViolations >= 2) {
+      if (!submitted && phase === 'test') {
+        toast.error("EXAM TERMINATED: Security protocol breached.", { duration: 6000, style: { background: '#ef4444', color: '#fff', fontWeight: 'bold' } });
+        handleSubmit(true);
+      }
+    }
+  }, [totalViolations, fsViolations, submitted, phase, handleSubmit]);
+
+  useEffect(() => {
+    if (phase !== 'test' || submitted) return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) handleViolation("Tab switching detected", "severe", "tab_switch");
+    };
+    
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement) {
+        setIsFullScreen(false);
+        handleViolation("Exited full-screen mode", "severe", "screen_exit");
+        setTimeout(() => {
+          if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen().catch(()=> {
+              handleViolation("Refused full-screen mode", "severe", "screen_exit");
+            });
+          }
+        }, 2000);
+      } else {
+        setIsFullScreen(true);
+      }
+    };
+
+    const handleBlur = () => {
+      handleViolation("Window lost focus", "severe", "tab_switch");
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    window.addEventListener('blur', handleBlur);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [phase, submitted, handleViolation]);
 
   useEffect(() => {
     if (!skills || skills.length === 0) {
@@ -56,9 +175,14 @@ export default function AptitudePage() {
     }
   }, [skills, router]);
 
+  const toggleFullScreen = useCallback(() => {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+    else document.exitFullscreen?.();
+  }, []);
+
   const handleStart = async () => {
     try {
-      requestFullscreen();
+      if (document.documentElement.requestFullscreen) { await document.documentElement.requestFullscreen(); setIsFullScreen(true); }
     } catch (e) {
       console.warn('Fullscreen request failed:', e);
     }
@@ -95,37 +219,7 @@ export default function AptitudePage() {
     setShowHint(true);
   };
 
-  const handleSubmit = useCallback(async () => {
-    if (submitted) return;
-    setSubmitted(true);
-    setLoading(true);
-    try {
-      const answersArr = questions.map(q => ({
-        questionId: q.id,
-        selectedAnswer: answers[q.id] ?? -1,
-        usedHint: !!hintsUsed[q.id]
-      }));
-      
-      const res = await fetch('http://localhost:5001/aptitude/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answers: answersArr, questions })
-      });
-      
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Submit failed');
-      
-      setResults(data);
-      setAptitudeResults(data);
-      setPhase('results');
-      if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
-    } catch (err) {
-      alert('Submission error: ' + err.message);
-      setSubmitted(false);
-    } finally {
-      setLoading(false);
-    }
-  }, [submitted, questions, answers, hintsUsed, setAptitudeResults]);
+
 
   const q = questions[currentIdx];
   const answered = Object.keys(answers).length;
@@ -255,7 +349,8 @@ export default function AptitudePage() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 py-6 px-4">
+    <div className="min-h-screen bg-gray-50 py-6 px-4 select-none">
+      {phase === 'test' && <FaceDetection mode="floating" onViolation={handleViolation} />}
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-6">
         <div className="lg:col-span-3 space-y-4">
           <div className="flex items-center justify-between bg-white rounded-2xl px-6 py-4 shadow-sm border border-gray-100">
@@ -263,7 +358,24 @@ export default function AptitudePage() {
               <span className="font-bold text-gray-700">Q {currentIdx + 1} / {questions.length}</span>
               <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">{q?.difficulty}</span>
             </div>
-            <Timer totalSeconds={timeLimit} onTimeUp={handleSubmit} />
+
+            <div className="hidden md:flex items-center gap-4 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-black">
+               <div className="flex items-center gap-2">
+                  <div className={`w-1.5 h-1.5 rounded-full ${isFullScreen ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+                  <span className="text-slate-500 uppercase tracking-tighter">AI Status</span>
+               </div>
+               <div className="w-px h-3 bg-slate-200" />
+               <div className="text-slate-500 uppercase tracking-tighter">FS: <span className={fsViolations > 0 ? 'text-red-500' : ''}>{fsViolations}/2</span></div>
+               <div className="w-px h-3 bg-slate-200" />
+               <div className="text-slate-500 uppercase tracking-tighter">Violations: <span className={totalViolations > 0 ? 'text-red-500' : ''}>{totalViolations}/5</span></div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Timer totalSeconds={timeLimit} onTimeUp={handleSubmit} />
+              <button onClick={toggleFullScreen} suppressHydrationWarning className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
+                {isFullScreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+              </button>
+            </div>
           </div>
 
           <div className="bg-white rounded-xl px-6 py-3 shadow-sm border border-gray-100">
@@ -329,7 +441,7 @@ export default function AptitudePage() {
                 Next →
               </button>
             ) : (
-              <button onClick={handleSubmit} className="flex-1 py-3 rounded-xl text-white font-semibold bg-orange-500">
+              <button onClick={() => handleSubmit(false)} className="flex-1 py-3 rounded-xl text-white font-semibold bg-orange-500">
                 Submit Test ✓
               </button>
             )}
@@ -337,8 +449,7 @@ export default function AptitudePage() {
         </div>
 
         <div className="space-y-4">
-          <ProctoringPanel videoRef={videoRef} cameraReady={cameraReady} warnings={warnings} permissionError={permissionError} />
-          <button onClick={handleSubmit} className="w-full py-3 rounded-xl text-white font-bold text-sm bg-orange-500">
+          <button onClick={() => handleSubmit(false)} className="w-full py-3 rounded-xl text-white font-bold text-sm bg-orange-500 hover:bg-orange-600 transition-all">
             Submit Early
           </button>
         </div>

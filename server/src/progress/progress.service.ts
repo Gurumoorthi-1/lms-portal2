@@ -55,7 +55,7 @@ export class ProgressService {
     }
 
     // Validate the output using the challenge's hidden validation function
-    const validateFn = this.challengesService.getValidationFunction(challengeId);
+    const validateFn = this.challengesService.getValidateFunction(challengeId);
     const passed = validateFn ? validateFn(result.output) : false;
 
     if (passed) {
@@ -87,5 +87,27 @@ export class ProgressService {
       expected: challenge.expectedOutput,
       message: passed ? 'Congratulations! You solved the challenge.' : 'Output did not match expected result.'
     };
+  }
+
+  async awardPointsForProblem(userId: string, problemId: string, difficulty: string) {
+    let pointsToAward = 10;
+    if (difficulty === 'Medium') pointsToAward = 20;
+    else if (difficulty === 'Hard') pointsToAward = 30;
+
+    const progress = await this.getUserProgress(userId);
+    const alreadySolved = progress.solvedProblems?.some(sp => sp.problemId.toString() === problemId);
+
+    if (!alreadySolved) {
+      return this.progressModel.findOneAndUpdate(
+        { user: new Types.ObjectId(userId) },
+        {
+          $inc: { points: pointsToAward },
+          $push: { solvedProblems: { problemId: new Types.ObjectId(problemId), solvedAt: new Date() } },
+          lastActivity: Date.now()
+        },
+        { new: true }
+      );
+    }
+    return progress;
   }
 }

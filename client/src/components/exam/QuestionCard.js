@@ -147,7 +147,7 @@ const CodeBlock = ({ language, children, ...props }) => (
           customStyle={{ backgroundColor: 'transparent' }}
           {...props}
         >
-          {String(children).replace(/\\n/g, '\n').replace(/\n$/, '')}
+          {(Array.isArray(children) ? children.join('') : String(children ?? '')).replace(/\\n/g, '\n').replace(/\n$/, '')}
         </SyntaxHighlighter>
       </div>
     </div>
@@ -166,7 +166,9 @@ const markdownComponents = {
       const className = codeProps.className || '';
       const match = /language-(\w+)/.exec(className);
       const language = match ? match[1] : 'javascript';
-      const codeText = codeProps.children || '';
+      // children can be a string or array in ReactMarkdown v10 — join to get full code
+      const rawCode = codeProps.children;
+      const codeText = Array.isArray(rawCode) ? rawCode.join('') : (rawCode || '');
       return <CodeBlock language={language}>{codeText}</CodeBlock>;
     }
     // Fallback: render as-is
@@ -227,9 +229,9 @@ const QuestionCard = ({ question, currentIdx, totalQuestions, selectedAnswer, on
               <ReactMarkdown components={markdownComponents}>
                 {[
                   question.text,
-                  question.codeSnippet ? `\n\n\`\`\`${question.language || 'javascript'}\n${question.codeSnippet}\n\`\`\`` : '',
-                  question.code ? `\n\n\`\`\`${question.language || 'javascript'}\n${question.code}\n\`\`\`` : '',
-                  question.snippet ? `\n\n\`\`\`${question.language || 'javascript'}\n${question.snippet}\n\`\`\`` : ''
+                  question.codeSnippet ? `\n\n\`\`\`${question.language || 'javascript'}\n${String(question.codeSnippet).replace(/\\n/g, '\n')}\n\`\`\`` : '',
+                  question.code ? `\n\n\`\`\`${question.language || 'javascript'}\n${String(question.code).replace(/\\n/g, '\n')}\n\`\`\`` : '',
+                  question.snippet ? `\n\n\`\`\`${question.language || 'javascript'}\n${String(question.snippet).replace(/\\n/g, '\n')}\n\`\`\`` : ''
                 ].filter(Boolean).join('\n')}
               </ReactMarkdown>
             </div>

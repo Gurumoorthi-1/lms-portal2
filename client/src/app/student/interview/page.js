@@ -5,13 +5,18 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useInterviewStore } from '@/hooks/useInterviewStore';
 import { useProctoring } from '@/hooks/useProctoring';
 import Skeleton from '@/components/ui/Skeleton';
+import dynamic from 'next/dynamic';
+import toast from 'react-hot-toast';
+import Modal from '@/components/ui/Modal';
 
 import { useSpeech } from '@/hooks/useSpeech';
 import { useEmotionAnalysis } from '@/hooks/useEmotionAnalysis';
 import ProctoringPanel from '@/components/exam/ProctoringPanel';
 import EmotionPanel from '@/components/exam/EmotionPanel';
 import EmotionReport from '@/components/exam/EmotionReport';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ShieldAlert, Maximize2, Minimize2 } from 'lucide-react';
+
+const FaceDetection = dynamic(() => import('@/components/exam/FaceDetection'), { ssr: false });
 
 
 export default function InterviewPage() {
@@ -30,6 +35,99 @@ export default function InterviewPage() {
   const [showEmotionReport, setShowEmotionReport] = useState(false);
   const [emotionReport, setEmotionReport] = useState(null);
   const textareaRef = useRef(null);
+
+  // Security / Proctoring state
+  const [totalViolations, setTotalViolations] = useState(0);
+  const [fsViolations, setFsViolations] = useState(0);
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const lastViolationRef = useRef(0);
+  const [isDisqualified, setIsDisqualified] = useState(false);
+  const isRequestingPermissionRef = useRef(false);
+  const pageLoadTimeRef = useRef(Date.now());
+
+  const handleViolation = useCallback(async (reason, severity = 'warning', type = 'general') => {
+    const now = Date.now();
+    if (now - lastViolationRef.current < 3000) return;
+
+    // Ignore blur violations during permission requests or first 10s of page load
+    if (type === 'tab_switch' && reason === 'Window lost focus') {
+      if (isRequestingPermissionRef.current || (now - pageLoadTimeRef.current < 10000)) {
+        return;
+      }
+    }
+
+    lastViolationRef.current = now;
+
+    const isFullScreenExit = type === 'screen_exit';
+
+    if (isFullScreenExit) {
+      setFsViolations(prev => {
+        const newCount = prev + 1;
+        toast.error(`Security Alert: ${reason}. Final warning!`, { id: 'security_alert', duration: 5000, icon: '⚠️', style: { border: '2px solid #ef4444', background: '#0f172a', color: '#fff' } });
+        return newCount;
+      });
+    } else {
+      setTotalViolations(prev => {
+        const newCount = prev + 1;
+        toast.error(`Security Alert: ${reason}. Violation ${newCount}/5`, { id: 'security_alert', duration: 5000, icon: '🛡️', style: { border: '2px solid #ef4444', background: '#0f172a', color: '#fff' } });
+        return newCount;
+      });
+    }
+  }, []);
+
+  const forceDisqualify = useCallback(() => {
+    toast.error("TEST TERMINATED: Security protocol breached.", { duration: 6000 });
+    setIsDisqualified(true);
+    if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if ((totalViolations >= 5 || fsViolations >= 2) && !isDisqualified) {
+      forceDisqualify();
+    }
+  }, [totalViolations, fsViolations, forceDisqualify, isDisqualified]);
+
+  useEffect(() => {
+    if (isDisqualified) return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) handleViolation("Tab switching detected", "severe", "tab_switch");
+    };
+    
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement) {
+        setIsFullScreen(false);
+        handleViolation("Exited full-screen mode", "severe", "screen_exit");
+        setTimeout(() => {
+          if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen().catch(()=> {
+              handleViolation("Refused full-screen mode", "severe", "screen_exit");
+            });
+          }
+        }, 2000);
+      } else {
+        setIsFullScreen(true);
+      }
+    };
+
+    const handleBlur = () => {
+      handleViolation("Window lost focus", "severe", "tab_switch");
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    window.addEventListener('blur', handleBlur);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [handleViolation, isDisqualified]);
+
+  const toggleFullScreen = useCallback(() => {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+    else document.exitFullscreen?.();
+  }, []);
 
   const { videoRef, cameraReady, permissionError, warnings, requestFullscreen } = useProctoring({
     sessionId: 'session-id', round: 'round3', enabled: true,
@@ -86,9 +184,12 @@ export default function InterviewPage() {
   }, [transcript, inputMode]);
 
   const handleStartListening = () => {
+    isRequestingPermissionRef.current = true;
     setTranscript('');
     setTypedAnswer('');
     startListening(t => setTypedAnswer(t));
+    // Reset after 5s assuming permission is dealt with
+    setTimeout(() => { isRequestingPermissionRef.current = false; }, 5000);
   };
 
   const handleStopListening = () => stopListening();
@@ -164,6 +265,13 @@ export default function InterviewPage() {
   const currentAnalysis = analyses[currentQ?.id];
   const isAnswered = !!answers[currentQ?.id];
 
+  // Auto-trigger fullscreen when loaded
+  useEffect(() => {
+    if (!loading && !document.fullscreenElement && document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+  }, [loading]);
+
   if (loading) return (
     <div className="min-h-screen bg-gray-50 py-10 px-4">
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -181,7 +289,7 @@ export default function InterviewPage() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 select-none">
       <AnimatePresence>
         {showEmotionReport && emotionReport && (
           <EmotionReport
@@ -369,7 +477,14 @@ export default function InterviewPage() {
           </div>
 
           <div className="space-y-4">
-            <ProctoringPanel videoRef={videoRef} cameraReady={cameraReady} warnings={warnings} permissionError={permissionError} />
+            <ProctoringPanel 
+              videoRef={videoRef}
+              onViolation={handleViolation}
+              totalViolations={totalViolations}
+              cameraReady={cameraReady} 
+              warnings={warnings} 
+              permissionError={permissionError} 
+            />
             <EmotionPanel isLoaded={emotionLoaded} faceDetected={faceDetected} currentEmotion={currentEmotion} emotionLabel={emotionLabel}
               confidence={confidence} nervousness={nervousness} emotionHistory={emotionHistory} />
 
@@ -382,6 +497,17 @@ export default function InterviewPage() {
           </div>
         </div>
       </div>
+
+      <Modal isOpen={isDisqualified} onClose={() => router.push('/student')} showClose={false} className="bg-rose-950 border-rose-500">
+        <div className="text-center p-6 space-y-4">
+          <div className="w-20 h-20 bg-rose-500/20 text-rose-500 rounded-full flex items-center justify-center mx-auto">
+            <ShieldAlert size={40} />
+          </div>
+          <h2 className="text-3xl font-black text-rose-500 uppercase tracking-widest">Disqualified</h2>
+          <p className="text-rose-200 font-bold text-lg">Your session has been terminated due to repeated security protocol breaches.</p>
+          <button onClick={() => window.location.href = '/student'} className="w-full h-14 bg-rose-600 text-white rounded-xl font-black mt-4 hover:bg-rose-500 transition-all">Exit Assessment</button>
+        </div>
+      </Modal>
     </div>
   );
 }

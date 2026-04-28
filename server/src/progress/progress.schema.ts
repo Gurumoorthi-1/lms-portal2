@@ -18,6 +18,12 @@ export class Progress extends Document {
   }])
   solvedChallenges: { challengeId: number; solvedAt: Date }[];
 
+  @Prop([{
+    problemId: { type: Types.ObjectId, ref: 'Problem', required: true },
+    solvedAt: { type: Date, default: Date.now },
+  }])
+  solvedProblems: { problemId: Types.ObjectId; solvedAt: Date }[];
+
   @Prop({ default: Date.now })
   lastActivity: Date;
 }

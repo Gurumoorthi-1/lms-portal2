@@ -35,7 +35,7 @@ export default function CodeEditor({ value, onChange, language, blockPaste = fal
   }
 
   return (
-    <div style={{ display:'flex', flex:1, overflow:'hidden', background:'#1a2035' }}>
+    <div style={{ display:'flex', flex:1, overflow:'hidden', background:'#1a2035', height:'100%' }}>
       {/* Line numbers */}
       <div style={{
         background:'#151d30', padding:'14px 10px',
@@ -59,8 +59,8 @@ export default function CodeEditor({ value, onChange, language, blockPaste = fal
           flex:1, background:'#1a2035', color:'#e2e8f0',
           fontFamily:'monospace', fontSize:13, lineHeight:'1.65',
           padding:'14px 16px', border:'none', outline:'none', resize:'none',
-          overflowY:'auto', whiteSpace:'pre', overflowWrap:'normal', overflowX:'auto',
-          caretColor:'#f97316', tabSize:2,
+          overflowY:'auto', overflowX:'hidden', whiteSpace:'pre-wrap', overflowWrap:'anywhere',
+          caretColor:'#f97316', tabSize:2, width:'100%', boxSizing:'border-box',
         }}
       />
     </div>

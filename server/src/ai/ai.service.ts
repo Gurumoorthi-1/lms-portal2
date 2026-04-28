@@ -304,31 +304,34 @@ IMPORTANT for primaryProgrammingLanguage: Only choose ONE from [javascript, pyth
   }
 
   async generateAptitudeQuestions(skills: string, numQuestions: number): Promise<any[]> {
-    const prompt = `Generate exactly ${numQuestions} multiple-choice questions for a standard corporate Aptitude Test.
+    const prompt = `Generate exactly ${numQuestions} high-quality, professional multiple-choice questions for a standard corporate Aptitude Test.
 
-CRITICAL INSTRUCTION:
-DO NOT generate ANY technical, coding, or programming language questions. The questions MUST be strictly general aptitude.
-Include a balanced mix of:
-- Quantitative Aptitude (math, percentages, ratios, algebra)
-- Logical Reasoning (patterns, puzzles, seating arrangements)
-- Verbal Ability (grammar, vocabulary, reading comprehension)
-- Data Interpretation
+CRITICAL INSTRUCTIONS:
+1. NO TECHNICAL/CODING QUESTIONS: Questions MUST be strictly general aptitude.
+2. ACCURACY: Each question must have EXACTLY one logically and mathematically correct answer. Double-check all calculations.
+3. CLEAR OPTIONS: All 4 options must be distinct and unique. Distractors (wrong answers) should be plausible but clearly incorrect upon calculation/reasoning. Do not repeat values.
+4. VALID JSON: Return only a valid JSON array.
+5. CATEGORIES: Provide a balanced mix of:
+   - Quantitative Aptitude (percentages, profit/loss, time/work, ratios, simple/compound interest, algebra).
+   - Logical Reasoning (syllogisms, blood relations, number series, seating arrangements, coding-decoding).
+   - Verbal Ability (sentence correction, synonyms/antonyms, idioms, contextual meaning).
+   - Data Interpretation (using hypothetical tables/charts described in text).
 
-Return ONLY valid JSON array:
+Return ONLY valid JSON array in this format:
 [
   {
     "id": "q1",
-    "question": "question text",
-    "options": ["option1", "option2", "option3", "option4"],
-    "correctAnswer": 0,
-    "hint": "helpful hint without giving away the answer",
-    "category": "quantitative",
+    "question": "Clear, unambiguous question text",
+    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "correctAnswer": 0, 
+    "hint": "Brief hint to guide the candidate",
+    "category": "quantitative | logical | verbal | di",
     "difficulty": "medium",
-    "explanation": "clear step-by-step mathematical or logical explanation"
+    "explanation": "Provide a thorough, step-by-step logical or mathematical proof of why the correct option is right and others are wrong."
   }
 ]
 
-correctAnswer MUST be an integer between 0 and 3. Ensure options are realistic and strictly related to the question.`;
+IMPORTANT: The 'correctAnswer' index (0-3) MUST strictly match the correct value in the 'options' array. Ensure there are no ambiguous or "none of the above" style questions unless specifically intended.`;
 
     try {
       const response: any = await this.openai.chat.completions.create({
@@ -339,8 +342,14 @@ correctAnswer MUST be an integer between 0 and 3. Ensure options are realistic a
         ]
       });
       const rawText = response.choices?.[0]?.message?.content || '[]';
-      const match = rawText.match(/\[[\s\S]*\]/);
-      return match ? JSON.parse(match[0]) : JSON.parse(rawText);
+      
+      // Extract JSON array using regex in case of markdown blocks or extra text
+      const jsonMatch = rawText.match(/\[\s*\{[\s\S]*\}\s*\]/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+      
+      return JSON.parse(rawText);
     } catch (error) {
       console.error('Aptitude Generation Error:', error);
       throw new BadRequestException('Failed to generate aptitude questions');
@@ -424,7 +433,7 @@ Return:
   "results": [],
   "timeComplexity": "O(n)",
   "spaceComplexity": "O(1)",
-  "feedback": "quality feedback"
+  "feedback": "Clear, constructive English feedback on the code quality, correctness, and improvements."
 }`;
 
     try {

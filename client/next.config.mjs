@@ -6,6 +6,8 @@ const nextConfig = {
         fs: false,
         path: false,
         crypto: false,
+        encoding: false,   // face-api.js → node-fetch → encoding (not needed in browser)
+        'node-fetch': false,
       };
     }
     return config;

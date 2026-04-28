@@ -1,6 +1,7 @@
 import { Controller, Post, Body, BadRequestException, UseGuards, Req } from '@nestjs/common';
 import { CompilerService } from './compiler.service';
 import { Request } from 'express';
+import { Request as ExpressRequest } from 'express';
 
 @Controller('compiler')
 export class CompilerController {
@@ -8,12 +9,15 @@ export class CompilerController {
 
   @Post('run')
   async runCode(
-    @Body('language') language: string,
-    @Body('code') code: string,
-    @Body('input') input?: string,
+    @Body() body: any
   ) {
-    if (!language || !code?.trim()) {
-      throw new BadRequestException('Language and code are required');
+    console.log('🚀 Compiler Run Request:', body);
+    const { language, code, input } = body;
+    if (!language) {
+      throw new BadRequestException('Language is required');
+    }
+    if (!code || !code.trim()) {
+      throw new BadRequestException('Code cannot be empty');
     }
 
     // Call service to run code

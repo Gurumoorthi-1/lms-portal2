@@ -89,7 +89,7 @@ export default function AnalyticsPage() {
               <span className="text-4xl font-black text-blue-600">{aptScore}%</span>
             </div>
             <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden mb-4">
-              <div className="h-full bg-blue-500 rounded-full" style={{ width: \`\${aptScore}%\` }} />
+              <div className="h-full bg-blue-500 rounded-full" style={{ width: `${aptScore}%` }} />
             </div>
             {aptitudeResults ? (
               <p className="text-sm font-medium text-gray-500">
@@ -111,7 +111,7 @@ export default function AnalyticsPage() {
               <span className="text-sm font-bold text-gray-400 mb-1">passed</span>
             </div>
             <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden mb-4">
-              <div className="h-full bg-orange-500 rounded-full" style={{ width: \`\${codingScore}%\` }} />
+              <div className="h-full bg-orange-500 rounded-full" style={{ width: `${codingScore}%` }} />
             </div>
             {codingResults ? (
               <p className="text-sm font-medium text-gray-500">
@@ -133,7 +133,7 @@ export default function AnalyticsPage() {
               <span className="text-sm font-bold text-gray-400 mb-1">avg score</span>
             </div>
             <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden mb-4">
-              <div className="h-full bg-purple-500 rounded-full" style={{ width: \`\${hrPercentage}%\` }} />
+              <div className="h-full bg-purple-500 rounded-full" style={{ width: `${hrPercentage}%` }} />
             </div>
             {interviewResults ? (
               <p className="text-sm font-medium text-gray-500">
@@ -205,7 +205,7 @@ export default function AnalyticsPage() {
                       <span className="text-3xl font-black">{interviewResults.emotionReport.overallNervousness}%</span>
                     </div>
                     <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-                      <div className="h-full bg-gradient-to-r from-green-400 to-amber-500" style={{ width: \`\${interviewResults.emotionReport.overallNervousness}%\` }} />
+                      <div className="h-full bg-gradient-to-r from-green-400 to-amber-500" style={{ width: `${interviewResults.emotionReport.overallNervousness}%` }} />
                     </div>
                   </div>
 

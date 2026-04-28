@@ -4,22 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
-import { 
-  BarChart3, 
-  LayoutDashboard, 
-  FileText, 
-  Search, 
-  User, 
-  ChevronLeft, 
-  Menu, 
-  Code,
-  X,
-  Sparkles,
-  Settings,
-  LogOut,
-  ChevronRight,
-  Trophy
-} from 'lucide-react';
+import { BarChart3, LayoutDashboard, FileText, Search, User, ChevronLeft, Menu, Code, X, Sparkles, Settings, LogOut, ArrowRight, Trophy, BookOpen, Binary, Cpu } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { twMerge } from 'tailwind-merge';
 import { clsx } from 'clsx';
@@ -173,10 +158,14 @@ export default function DashboardLayout({ children }) {
   };
 
   const menuItems = [
+    { type: 'header', label: 'Main Portal' },
     { icon: LayoutDashboard, label: 'Dashboard', href: '/student' },
     { icon: BarChart3, label: 'Analytics', href: '/analytics' },
     { icon: Code, label: 'Code Lab', href: '/codelab' },
     { icon: User, label: 'Personal Interview', href: '/student/resume' },
+    { type: 'header', label: 'Code Path' },
+    { icon: BookOpen, label: 'Learning Paths', href: '/courses' },
+    { icon: Binary, label: 'Practice Arena', href: '/problems' },
   ];
 
   const bottomItems = [];
@@ -198,14 +187,18 @@ export default function DashboardLayout({ children }) {
           )}
         </div>
 
-        <nav className="flex-1 p-4 space-y-1">
-          {menuItems.map((item) => (
-            <SidebarItem
-              key={item.href}
-              {...item}
-              active={pathname === item.href}
-              collapsed={collapsed}
-            />
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto custom-scrollbar">
+          {menuItems.map((item, idx) => (
+            item.type === 'header' ? (
+              !collapsed && <div key={idx} className="px-4 pt-6 pb-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">{item.label}</div>
+            ) : (
+              <SidebarItem
+                key={item.href}
+                {...item}
+                active={pathname === item.href}
+                collapsed={collapsed}
+              />
+            )
           ))}
         </nav>
 
@@ -299,14 +292,18 @@ export default function DashboardLayout({ children }) {
                   <X size={24} />
                 </button>
               </div>
-              <div className="p-6 space-y-2">
-                {menuItems.map((item) => (
-                  <SidebarItem
-                    key={item.href}
-                    {...item}
-                    active={pathname === item.href}
-                    onClick={() => setMobileMenuOpen(false)}
-                  />
+              <div className="p-6 space-y-2 overflow-y-auto">
+                {menuItems.map((item, idx) => (
+                  item.type === 'header' ? (
+                    <div key={idx} className="px-4 pt-6 pb-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">{item.label}</div>
+                  ) : (
+                    <SidebarItem
+                      key={item.href}
+                      {...item}
+                      active={pathname === item.href}
+                      onClick={() => setMobileMenuOpen(false)}
+                    />
+                  )
                 ))}
               </div>
             </motion.div>
@@ -350,7 +347,7 @@ export default function DashboardLayout({ children }) {
             onClick={() => setShowLevelUp(false)}
             className="w-full h-14 bg-[#010101] text-white rounded-2xl font-black text-sm hover:translate-y-[-2px] active:scale-95 transition-all shadow-xl shadow-slate-200 flex items-center justify-center gap-3 group"
           >
-            Keep Pushing <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
+            Keep Pushing <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
           </button>
         </div>
       </Modal>

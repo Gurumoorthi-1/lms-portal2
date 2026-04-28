@@ -5,9 +5,6 @@ import { logProctoringEvent } from '@/lib/api';
 export function useProctoring({ sessionId, round, enabled = true }) {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
-  const audioCtxRef = useRef(null);
-  const analyserRef = useRef(null);
-  const noiseIntervalRef = useRef(null);
   const tabHiddenRef = useRef(false);
   const [warnings, setWarnings] = useState([]);
   const [cameraReady, setCameraReady] = useState(false);
@@ -32,32 +29,12 @@ export function useProctoring({ sessionId, round, enabled = true }) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 320, height: 240, facingMode: 'user' },
-        audio: true,
+        audio: false,
       });
-      streamRef.current = stream;
       streamRef.current = stream;
       setCameraReady(true);
 
-      // Set up audio analysis for noise detection
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      audioCtxRef.current = audioCtx;
-      const source = audioCtx.createMediaStreamSource(stream);
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 256;
-      source.connect(analyser);
-      analyserRef.current = analyser;
-
-      // Monitor noise level every 3 seconds
-      noiseIntervalRef.current = setInterval(() => {
-        if (!analyserRef.current) return;
-        const data = new Uint8Array(analyserRef.current.frequencyBinCount);
-        analyserRef.current.getByteFrequencyData(data);
-        const avg = data.reduce((s, v) => s + v, 0) / data.length;
-        if (avg > 45) {
-          addWarning('noise', `Background noise detected (level: ${Math.round(avg)})`, 'warning');
-        }
-      }, 3000);
-
+      // Mic access removed as per request
     } catch (err) {
       setPermissionError(err.message);
       addWarning('camera_error', `Camera/Mic access denied: ${err.message}`, 'error');
@@ -69,13 +46,6 @@ export function useProctoring({ sessionId, round, enabled = true }) {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
-    }
-    if (audioCtxRef.current) {
-      audioCtxRef.current.close().catch(() => {});
-      audioCtxRef.current = null;
-    }
-    if (noiseIntervalRef.current) {
-      clearInterval(noiseIntervalRef.current);
     }
     setCameraReady(false);
   }, []);

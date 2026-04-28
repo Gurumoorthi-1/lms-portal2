@@ -1,8 +1,7 @@
 // src/hooks/useEmotionAnalysis.js
-// Feature 3: Real-time face + emotion detection using face-api.js
+// Feature 3: Real-time face + emotion detection using @vladmandic/face-api
 import { useEffect, useRef, useState, useCallback } from 'react';
 
-const FACE_API_CDN = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
 const MODELS_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model';
 
 // Emotion → readable label + confidence mapping
@@ -46,17 +45,18 @@ export function useEmotionAnalysis({ videoRef, enabled = true }) {
   const [emotionHistory, setEmotionHistory] = useState([]); // for report
   const intervalRef = useRef(null);
   const loadedRef = useRef(false);
+  const faceapiRef = useRef(null);
 
   const loadFaceAPI = useCallback(async () => {
     if (loadedRef.current) return;
     try {
-      if (!window.faceapi) {
-        await loadScript(FACE_API_CDN);
-      }
+      // Dynamic import to avoid SSR issues — face-api needs browser APIs
+      const faceapi = await import('@vladmandic/face-api');
+      faceapiRef.current = faceapi;
       // Load required models
       await Promise.all([
-        window.faceapi.nets.tinyFaceDetector.loadFromUri(MODELS_URL),
-        window.faceapi.nets.faceExpressionNet.loadFromUri(MODELS_URL),
+        faceapi.nets.tinyFaceDetector.loadFromUri(MODELS_URL),
+        faceapi.nets.faceExpressionNet.loadFromUri(MODELS_URL),
       ]);
       loadedRef.current = true;
       setIsLoaded(true);
@@ -67,17 +67,6 @@ export function useEmotionAnalysis({ videoRef, enabled = true }) {
       setIsLoaded(true);
     }
   }, []);
-
-  function loadScript(src) {
-    return new Promise((resolve, reject) => {
-      if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
-      const s = document.createElement('script');
-      s.src = src;
-      s.onload = resolve;
-      s.onerror = () => reject(new Error('Script load failed: ' + src));
-      document.head.appendChild(s);
-    });
-  }
 
   const runDetection = useCallback(async () => {
     if (!videoRef.current || !enabled) return;
@@ -98,9 +87,12 @@ export function useEmotionAnalysis({ videoRef, enabled = true }) {
       return;
     }
 
+    const fa = faceapiRef.current;
+    if (!fa) return;
+
     try {
-      const detection = await window.faceapi
-        .detectSingleFace(video, new window.faceapi.TinyFaceDetectorOptions())
+      const detection = await fa
+        .detectSingleFace(video, new fa.TinyFaceDetectorOptions())
         .withFaceExpressions();
 
       if (!detection) {
@@ -117,8 +109,10 @@ export function useEmotionAnalysis({ videoRef, enabled = true }) {
       setEmotionHistory(prev =>
         [...prev, { emotion: dominantEmotion, confidence: conf, nervousness: nerv, timestamp: Date.now() }].slice(-60)
       );
-    } catch {
-      // Silently ignore frame errors
+    } catch (err) {
+      // If tfjs kernel error occurs at runtime, switch to simulated mode
+      console.warn('Face detection error, switching to simulated mode:', err.message);
+      loadedRef.current = 'simulated';
     }
   }, [videoRef, enabled]);
 

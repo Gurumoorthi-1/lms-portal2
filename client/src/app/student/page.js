@@ -16,7 +16,6 @@ import {
   Play, 
   ArrowRight, 
   MoreVertical,
-  ChevronRight,
   BookOpen,
   Inbox,
   RotateCcw
@@ -172,15 +171,26 @@ export default function StudentDashboard() {
 
       const statsUrl = userId ? `/exams/stats?userId=${userId}` : '/exams/stats';
       const examsUrl = userId ? `/exams?userId=${userId}` : '/exams';
+      const progressUrl = '/progress/me';
 
-      const [statsRes, examsRes] = await Promise.all([
+      const [statsRes, examsRes, progressRes] = await Promise.all([
         authFetch(statsUrl, { cache: 'no-store' }),
-        authFetch(examsUrl, { cache: 'no-store' })
+        authFetch(examsUrl, { cache: 'no-store' }),
+        authFetch(progressUrl, { cache: 'no-store' })
       ]);
 
-      if (statsRes.ok && examsRes.ok) {
+      if (statsRes.ok && examsRes.ok && progressRes.ok) {
         const statsData = await statsRes.json();
         const examsData = await examsRes.json();
+        const progressData = await progressRes.json();
+
+        // Merge progress data into stats
+        const mergedStats = {
+          ...statsData,
+          totalXP: progressData.points || 0,
+          solvedProblems: progressData.solvedProblems?.length || 0,
+          solvedChallenges: progressData.solvedChallenges?.length || 0
+        };
 
         // AGGRESSIVE DEDUPLICATION: Group by Title + Topic
         const dedupMap = new Map();
@@ -192,10 +202,6 @@ export default function StudentDashboard() {
           if (!existing) {
             dedupMap.set(key, exam);
           } else {
-            // PRIORITY LOGIC:
-            // 1. If new one is completed but old isn't -> Take new
-            // 2. If new one has higher score -> Take new
-            // 3. Otherwise keep existing
             const isNewCompleted = exam.status === 'completed';
             const isOldCompleted = existing.status === 'completed';
             
@@ -209,11 +215,11 @@ export default function StudentDashboard() {
 
         const finalExams = Array.from(dedupMap.values());
 
-        setStats(statsData);
+        setStats(mergedStats);
         setRecentExams(finalExams);
         
         // Sync cache with deduplicated data
-        localStorage.setItem('dashboard_stats', JSON.stringify(statsData));
+        localStorage.setItem('dashboard_stats', JSON.stringify(mergedStats));
         localStorage.setItem('dashboard_exams', JSON.stringify(finalExams));
       } else {
         setError(true);
@@ -277,16 +283,16 @@ export default function StudentDashboard() {
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-               {loading ? (
-                 [...Array(4)].map((_, i) => <SkeletonCard key={i} />)
-               ) : (
-                 <>
-                   <StatCard icon={Target} label="Average Score" value={`${stats?.overallAccuracy || 0}%`} trend={5.2} delay={0.1} />
-                   <StatCard icon={TrendingUp} label="Total Assigned" value={recentExams.length} trend={12} delay={0.2} />
-                   <StatCard icon={Clock} label="Completed Exams" value={recentExams.filter(e => e.status === 'completed' && (e.score || 0) >= 70).length} trend={8.4} delay={0.3} />
-                   <StatCard icon={Sparkles} label="Global Rank" value={`#${1240 - (stats?.totalXP || 0) / 10 > 1 ? Math.floor(1240 - (stats?.totalXP || 0) / 10) : 1}`} delay={0.4} />
-                 </>
-               )}
+                {loading ? (
+                  [...Array(4)].map((_, i) => <SkeletonCard key={i} />)
+                ) : (
+                  <>
+                    <StatCard icon={Target} label="Exam Accuracy" value={`${stats?.overallAccuracy || 0}%`} trend={5.2} delay={0.1} />
+                    <StatCard icon={TrendingUp} label="Exams Completed" value={recentExams.filter(e => e.status === 'completed').length} trend={12} delay={0.2} />
+                    <StatCard icon={Sparkles} label="Coding XP" value={stats?.totalXP || 0} delay={0.3} />
+                    <StatCard icon={BookOpen} label="Problems Solved" value={stats?.solvedProblems || 0} delay={0.4} />
+                  </>
+                )}
             </div>
 
             {!loading && stats?.weakAreas && (stats.weakAreas.length > 0) && (

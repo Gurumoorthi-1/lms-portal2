@@ -1,14 +1,16 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useInterviewStore } from '@/hooks/useInterviewStore';
-import { useProctoring } from '@/hooks/useProctoring';
 import Skeleton from '@/components/ui/Skeleton';
-
-import ProctoringPanel from '@/components/exam/ProctoringPanel';
+import dynamic from 'next/dynamic';
 import CodeEditor from '@/components/codelab/CodeEditor';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ShieldAlert, Maximize2, Minimize2 } from 'lucide-react';
+import toast from 'react-hot-toast';
+import Modal from '@/components/ui/Modal';
+
+const FaceDetection = dynamic(() => import('@/components/exam/FaceDetection'), { ssr: false });
 
 
 const DIFF_COLORS = { easy: '#10b981', medium: '#f59e0b', hard: '#ef4444' };
@@ -27,9 +29,91 @@ export default function CodingPage() {
   const [submissions, setSubmissions] = useState({});
   const [loading, setLoading] = useState(true);
 
-  const { videoRef, cameraReady, permissionError, warnings, requestFullscreen } = useProctoring({
-    sessionId: 'session-id', round: 'round2', enabled: true,
-  });
+  const [totalViolations, setTotalViolations] = useState(0);
+  const [fsViolations, setFsViolations] = useState(0);
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const lastViolationRef = useRef(0);
+  const [isDisqualified, setIsDisqualified] = useState(false);
+  const pageLoadTimeRef = useRef(Date.now());
+
+  const handleViolation = useCallback(async (reason, severity = 'warning', type = 'general') => {
+    const now = Date.now();
+    if (now - lastViolationRef.current < 3000) return;
+
+    // Ignore blur violations during first 15s of page load (permission popups)
+    if (type === 'tab_switch' && reason === 'Window lost focus') {
+      if (now - pageLoadTimeRef.current < 15000) return;
+    }
+
+    lastViolationRef.current = now;
+
+    const isFullScreenExit = type === 'screen_exit';
+
+    if (isFullScreenExit) {
+      setFsViolations(prev => {
+        const newCount = prev + 1;
+        toast.error(`Security Alert: ${reason}. Final warning!`, { id: 'security_alert', duration: 5000, icon: '⚠️', style: { border: '2px solid #ef4444', background: '#0f172a', color: '#fff' } });
+        return newCount;
+      });
+    } else {
+      setTotalViolations(prev => {
+        const newCount = prev + 1;
+        toast.error(`Security Alert: ${reason}. Violation ${newCount}/5`, { id: 'security_alert', duration: 5000, icon: '🛡️', style: { border: '2px solid #ef4444', background: '#0f172a', color: '#fff' } });
+        return newCount;
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (totalViolations >= 5 || fsViolations >= 2) {
+      if (!isDisqualified) {
+        toast.error("TEST TERMINATED: Security protocol breached.", { duration: 6000, style: { background: '#ef4444', color: '#fff', fontWeight: 'bold' } });
+        setIsDisqualified(true);
+      }
+    }
+  }, [totalViolations, fsViolations, isDisqualified]);
+
+  useEffect(() => {
+    if (isDisqualified) return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) handleViolation("Tab switching detected", "severe", "tab_switch");
+    };
+    
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement) {
+        setIsFullScreen(false);
+        handleViolation("Exited full-screen mode", "severe", "screen_exit");
+        setTimeout(() => {
+          if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen().catch(()=> {
+              handleViolation("Refused full-screen mode", "severe", "screen_exit");
+            });
+          }
+        }, 2000);
+      } else {
+        setIsFullScreen(true);
+      }
+    };
+
+    const handleBlur = () => {
+      handleViolation("Window lost focus", "severe", "tab_switch");
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    window.addEventListener('blur', handleBlur);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [handleViolation, isDisqualified]);
+
+  const toggleFullScreen = useCallback(() => {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+    else document.exitFullscreen?.();
+  }, []);
 
   useEffect(() => {
     if (!skills || skills.length === 0) {
@@ -66,6 +150,10 @@ export default function CodingPage() {
           setProblems(data);
           const starter = data[0]?.starterCode?.[lang] || '';
           setCode(starter);
+          if (document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen().catch(() => {});
+            setIsFullScreen(true);
+          }
         } else {
           throw new Error('Invalid format returned from AI');
         }
@@ -132,9 +220,17 @@ export default function CodingPage() {
 
   const solvedCount = Object.values(submissions).filter(s => s.passed).length;
 
+  useEffect(() => {
+    const triggerFS = () => {
+      if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      }
+    };
+    if (!loading) triggerFS();
+  }, [loading]);
   if (loading) return (
-    <div className="min-h-screen flex flex-col bg-gray-900 text-white">
-      <div className="bg-gray-800 h-14 border-b border-gray-700 px-4 flex items-center gap-3">
+    <div className="h-screen flex flex-col bg-gray-900 text-white overflow-hidden">
+      <div className="bg-gray-800 h-14 border-b border-gray-700 px-4 flex items-center gap-3 shrink-0">
         <Skeleton width="150px" height="30px" className="bg-gray-700" />
         <Skeleton width="150px" height="30px" className="bg-gray-700" />
         <Skeleton width="150px" height="30px" className="bg-gray-700 ml-auto" />
@@ -149,52 +245,67 @@ export default function CodingPage() {
         <div className="flex-1 bg-gray-950 p-4 space-y-4">
           <Skeleton height="100%" className="bg-gray-900" />
         </div>
-        <div className="w-52 border-l border-gray-700 bg-gray-900 p-3">
-          <Skeleton height="150px" className="bg-gray-800" />
-        </div>
       </div>
     </div>
   );
-
   return (
-    <div className="min-h-screen flex flex-col bg-gray-900 text-white">
-      <div className="bg-gray-800 border-b border-gray-700 px-4 py-2 flex items-center gap-3">
-        <button 
-          onClick={() => router.push('/student')}
-          className="p-2 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white transition-all group"
-          title="Back to Dashboard"
-        >
-          <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
-        </button>
-        <div className="flex gap-1.5 overflow-x-auto flex-1">
-          {problems.map((p, i) => {
-            const sub = submissions[p.id];
-            return (
-              <button key={p.id} onClick={() => selectProblem(i)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap border ${
-                  i === activeProbIdx ? 'bg-gray-700 border-orange-500' : 'bg-gray-800 border-gray-600 hover:border-gray-400'
-                }`}>
-                <span style={{ color: sub ? (sub.passed ? '#10b981' : '#ef4444') : DIFF_COLORS[p.difficulty] }}>
-                  {sub ? (sub.passed ? '✓' : '✗') : '○'}
-                </span>
-                {p.title}
-              </button>
-            );
-          })}
+    <div className="h-screen flex flex-col bg-gray-900 text-white select-none overflow-hidden">
+      {!isDisqualified && <FaceDetection mode="floating" onViolation={handleViolation} />}
+      <div className="bg-gray-800 border-b border-gray-700 px-4 py-1.5 flex items-center gap-4 shrink-0">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <button 
+            onClick={() => router.push('/student')}
+            suppressHydrationWarning
+            className="p-2 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white transition-all group shrink-0"
+            title="Back to Dashboard"
+          >
+            <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
+          </button>
+          <div className="flex gap-1.5 overflow-x-auto min-w-0" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+            {problems.map((p, i) => {
+              const sub = submissions[p.id];
+              return (
+                <button key={p.id} onClick={() => selectProblem(i)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap border ${
+                    i === activeProbIdx ? 'bg-gray-700 border-orange-500' : 'bg-gray-800 border-gray-600 hover:border-gray-400'
+                  }`}>
+                  <span style={{ color: sub ? (sub.passed ? '#10b981' : '#ef4444') : DIFF_COLORS[p.difficulty] }}>
+                    {sub ? (sub.passed ? '✓' : '✗') : '○'}
+                  </span>
+                  {p.title}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-900/60 border border-blue-700">
-            <span className="text-blue-200 text-xs font-semibold">{LANG_LABELS[detectedLanguage] || detectedLanguage}</span>
+        <div className="flex items-center gap-4 shrink-0">
+           <div className="hidden lg:flex items-center gap-4 px-3 py-1.5 bg-gray-900/50 border border-gray-700 rounded-xl text-[10px] font-black">
+             <div className="flex items-center gap-2">
+                <div className={`w-1.5 h-1.5 rounded-full ${isFullScreen ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+                <span className="text-gray-400 uppercase tracking-tighter whitespace-nowrap">AI Status</span>
+             </div>
+             <div className="w-px h-3 bg-gray-700" />
+             <div className="text-gray-400 uppercase tracking-tighter whitespace-nowrap">FS: <span className={fsViolations > 0 ? 'text-red-500' : ''}>{fsViolations}/2</span></div>
+             <div className="w-px h-3 bg-gray-700" />
+             <div className="text-gray-400 uppercase tracking-tighter whitespace-nowrap">Violations: <span className={totalViolations > 0 ? 'text-red-500' : ''}>{totalViolations}/5</span></div>
           </div>
-          <span className="text-gray-400 text-sm font-medium">{solvedCount}/{problems.length} solved</span>
-          <button onClick={handleComplete}
-            className="px-4 py-1.5 rounded-lg text-white text-sm font-bold bg-orange-500 hover:bg-orange-600">
-            Finish Round →
+
+          <button onClick={toggleFullScreen} suppressHydrationWarning className="p-1.5 text-gray-400 hover:bg-gray-700 rounded-lg transition-colors">
+            {isFullScreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
           </button>
+          
+          <div className="flex items-center bg-gray-900/80 border border-gray-700 rounded-lg shrink-0">
+            <div className="px-3 py-1.5 bg-blue-900/40 border-r border-gray-700">
+              <span className="text-blue-300 text-[11px] font-black uppercase tracking-widest whitespace-nowrap">{LANG_LABELS[detectedLanguage] || detectedLanguage}</span>
+            </div>
+            <div className="px-3 py-1.5 flex items-center gap-1.5">
+              <span className="text-white text-[11px] font-black">{solvedCount}/{problems.length}</span>
+              <span className="text-gray-400 text-[11px] font-black uppercase tracking-widest">SOLVED</span>
+            </div>
+          </div>
         </div>
       </div>
-
       <div className="flex-1 flex overflow-hidden">
         {activeProblem && (
           <>
@@ -251,6 +362,11 @@ export default function CodingPage() {
                   className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white bg-orange-500 disabled:opacity-40">
                   {submitting ? '⏳ Submitting...' : '✓ Submit AI Eval'}
                 </button>
+                <div className="w-px h-4 bg-gray-700 mx-1" />
+                <button onClick={handleComplete}
+                  className="px-4 py-1.5 rounded-lg text-white text-sm font-bold bg-emerald-600 hover:bg-emerald-500 transition-colors shadow-lg shadow-emerald-900/20">
+                  Finish Round →
+                </button>
               </div>
 
               <div className="flex-1 overflow-hidden" style={{ minHeight: '300px' }}>
@@ -288,11 +404,18 @@ export default function CodingPage() {
             </div>
           </>
         )}
-
-        <div className="w-52 border-l border-gray-700 bg-gray-900 p-3 shrink-0 overflow-y-auto text-black">
-          <ProctoringPanel videoRef={videoRef} cameraReady={cameraReady} warnings={warnings} permissionError={permissionError} />
-        </div>
       </div>
+
+      <Modal isOpen={isDisqualified} onClose={() => router.push('/student')} showClose={false} className="bg-rose-950 border-rose-500">
+         <div className="text-center p-6 space-y-4">
+           <div className="w-20 h-20 bg-rose-500/20 text-rose-500 rounded-full flex items-center justify-center mx-auto">
+             <ShieldAlert size={40} />
+           </div>
+           <h2 className="text-3xl font-black text-rose-500 uppercase tracking-widest">Disqualified</h2>
+           <p className="text-rose-200 font-bold text-lg">Your session has been terminated due to repeated security protocol breaches.</p>
+           <button onClick={() => window.location.href = '/student'} className="w-full h-14 bg-rose-600 text-white rounded-xl font-black mt-4 hover:bg-rose-500 transition-all">Exit Assessment</button>
+         </div>
+      </Modal>
     </div>
   );
 }
