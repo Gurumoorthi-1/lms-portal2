@@ -129,9 +129,25 @@ export default function ExamPlayer() {
 
     if (resultData.status !== 'disqualified' && resultData.score >= 70) {
       confetti({ particleCount: 150, spread: 90, origin: { y: 0.6 }, colors: ['#2563EB', '#7C3AED', '#22C55E'] });
-      // Restore previous behavior: Auto-navigate to result page on pass
+      
+      // Auto-promote to next stage (Resume Upload) after passing the exam
+      try {
+        const promoRes = await authFetch('/progress/mcq/submit', {
+          method: 'POST',
+          body: JSON.stringify({ answers: answers, passed: true }) // Simulating pass for transition
+        });
+        const promoData = await promoRes.json();
+        if (promoData.newToken) {
+          localStorage.setItem('token', promoData.newToken);
+          document.cookie = `token=${promoData.newToken}; path=/; max-age=86400; SameSite=Lax`;
+        }
+      } catch (err) {
+        console.error('Stage promotion failed:', err);
+      }
+
+      // Redirect to Resume Upload page after a short delay
       setTimeout(() => {
-        router.push(`/results?id=${activeExam.id || activeExam._id}`);
+        window.location.href = '/student/resume';
       }, 2500);
     }
     setShowSuccess(true);

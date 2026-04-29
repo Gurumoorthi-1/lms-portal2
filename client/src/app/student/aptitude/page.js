@@ -8,6 +8,7 @@ import dynamic from 'next/dynamic';
 import Modal from '@/components/ui/Modal';
 import { ArrowLeft, ShieldAlert, Maximize2, Minimize2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useSecurity } from '@/components/providers/SecurityProvider';
 
 const FaceDetection = dynamic(() => import('@/components/exam/FaceDetection'), { ssr: false });
 
@@ -49,39 +50,21 @@ export default function AptitudePage() {
   const [submitted, setSubmitted] = useState(false);
   const startTimeRef = useRef(Date.now());
 
-  const [totalViolations, setTotalViolations] = useState(0);
-  const [fsViolations, setFsViolations] = useState(0);
+  // Security Orchestrator
+  const { 
+    totalViolations, 
+    isDisqualified, 
+    startSecurity, 
+    reportViolation,
+    config: securityConfig
+  } = useSecurity();
+
   const [isFullScreen, setIsFullScreen] = useState(false);
-  const lastViolationRef = useRef(0);
   const pageLoadTimeRef = useRef(Date.now());
 
-  const handleViolation = useCallback(async (reason, severity = 'warning', type = 'general') => {
-    const now = Date.now();
-    if (now - lastViolationRef.current < 3000) return;
-
-    // Ignore blur violations during first 15s (permission popups)
-    if (type === 'tab_switch' && reason === 'Window lost focus') {
-      if (now - pageLoadTimeRef.current < 15000) return;
-    }
-
-    lastViolationRef.current = now;
-
-    const isFullScreenExit = type === 'screen_exit';
-
-    if (isFullScreenExit) {
-      setFsViolations(prev => {
-        const newCount = prev + 1;
-        toast.error(`Security Alert: ${reason}. Final warning!`, { id: 'security_alert', duration: 5000, icon: '⚠️', style: { border: '2px solid #ef4444', background: '#0f172a', color: '#fff' } });
-        return newCount;
-      });
-    } else {
-      setTotalViolations(prev => {
-        const newCount = prev + 1;
-        toast.error(`Security Alert: ${reason}. Violation ${newCount}/5`, { id: 'security_alert', duration: 5000, icon: '🛡️', style: { border: '2px solid #ef4444', background: '#0f172a', color: '#fff' } });
-        return newCount;
-      });
-    }
-  }, []);
+  const handleAIViolation = useCallback((reason, severity = 'warning', type = 'ai_alert') => {
+    reportViolation(type, reason, severity);
+  }, [reportViolation]);
 
   const handleSubmit = useCallback(async (isDisqualifiedParam = false) => {
     if (submitted) return;
@@ -98,7 +81,10 @@ export default function AptitudePage() {
       
       const res = await fetch('http://localhost:5001/aptitude/submit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
         body: JSON.stringify({ answers: answersArr, questions })
       });
       
@@ -109,6 +95,12 @@ export default function AptitudePage() {
          data.passed = false;
          data.message = 'Exam Terminated due to Security Violations.';
          data.score = 0;
+      }
+
+      // Persist the new token to allow stage-based navigation to Coding Round
+      if (data.newToken) {
+        localStorage.setItem('token', data.newToken);
+        document.cookie = `token=${data.newToken}; path=/; max-age=86400; SameSite=Lax`;
       }
 
       setResults(data);
@@ -122,58 +114,39 @@ export default function AptitudePage() {
       setLoading(false);
     }
   }, [submitted, questions, answers, hintsUsed, setAptitudeResults]);
-
+  
   useEffect(() => {
-    if (totalViolations >= 5 || fsViolations >= 2) {
-      if (!submitted && phase === 'test') {
-        toast.error("EXAM TERMINATED: Security protocol breached.", { duration: 6000, style: { background: '#ef4444', color: '#fff', fontWeight: 'bold' } });
-        handleSubmit(true);
-      }
+    if (phase === 'results' && results?.passed) {
+      const timer = setTimeout(() => {
+        window.location.href = '/student/coding';
+      }, 3500);
+      return () => clearTimeout(timer);
     }
-  }, [totalViolations, fsViolations, submitted, phase, handleSubmit]);
+  }, [phase, results]);
 
   useEffect(() => {
-    if (phase !== 'test' || submitted) return;
+    if (isDisqualified && !submitted && phase === 'test') {
+      toast.error("EXAM TERMINATED: Security protocol breached.", { duration: 6000, style: { background: '#ef4444', color: '#fff', fontWeight: 'bold' } });
+      handleSubmit(true);
+    }
+  }, [isDisqualified, submitted, phase, handleSubmit]);
 
-    const handleVisibilityChange = () => {
-      if (document.hidden) handleViolation("Tab switching detected", "severe", "tab_switch");
-    };
-    
-    const handleFullscreenChange = () => {
-      if (!document.fullscreenElement) {
-        setIsFullScreen(false);
-        handleViolation("Exited full-screen mode", "severe", "screen_exit");
-        setTimeout(() => {
-          if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
-            document.documentElement.requestFullscreen().catch(()=> {
-              handleViolation("Refused full-screen mode", "severe", "screen_exit");
-            });
-          }
-        }, 2000);
-      } else {
-        setIsFullScreen(true);
-      }
-    };
+  // Centralized proctoring handled by SecurityProvider
 
-    const handleBlur = () => {
-      handleViolation("Window lost focus", "severe", "tab_switch");
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    window.addEventListener('blur', handleBlur);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-      window.removeEventListener('blur', handleBlur);
-    };
-  }, [phase, submitted, handleViolation]);
+  const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
+    const unsub = useInterviewStore.persist.onFinishHydration(() => setIsHydrated(true));
+    if (useInterviewStore.persist.hasHydrated()) setIsHydrated(true);
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (!isHydrated) return;
     if (!skills || skills.length === 0) {
       router.push('/student/resume');
     }
-  }, [skills, router]);
+  }, [isHydrated, skills, router]);
 
   const toggleFullScreen = useCallback(() => {
     if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
@@ -191,7 +164,10 @@ export default function AptitudePage() {
     try {
       const res = await fetch('http://localhost:5001/aptitude/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
         body: JSON.stringify({ skills, totalQuestions: numQuestions })
       });
       const data = await res.json();
@@ -201,6 +177,14 @@ export default function AptitudePage() {
       setTimeLimit(data.timeLimit || numQuestions * 60);
       setPhase('test');
       startTimeRef.current = Date.now();
+
+      // Start Unified Security Session
+      startSecurity({ 
+        sessionId: 'assessment-aptitude-session', 
+        round: 'aptitude',
+        maxViolations: 5,
+        maxCritical: 2
+      });
     } catch (err) {
       alert('Failed to generate questions: ' + err.message);
     } finally {
@@ -299,9 +283,15 @@ export default function AptitudePage() {
       <div className="max-w-2xl mx-auto bg-white rounded-3xl shadow-lg p-8 text-center border border-gray-100">
         <div className="text-6xl mb-4">{results.passed ? '🎉' : '😞'}</div>
         <h2 className={`text-3xl font-black mb-2 ${results.passed ? 'text-green-500' : 'text-red-500'}`}>
-          {results.passed ? 'Round 1 Passed!' : 'Round 1 Failed'}
+          {results.passed ? 'Aptitude Round Passed!' : 'Aptitude Round Failed'}
         </h2>
         <p className="text-gray-500 mb-8">{results.message}</p>
+        
+        {results.passed && (
+          <div className="mb-6 p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-700 animate-pulse">
+            🚀 Promoting to Coding Round... Redirecting in 3 seconds.
+          </div>
+        )}
 
         <div className="grid grid-cols-3 gap-4 mb-8">
           <div className="p-4 rounded-xl bg-gray-50">
@@ -334,12 +324,16 @@ export default function AptitudePage() {
         </div>
 
         {results.passed ? (
-          <button onClick={() => router.push('/student/coding')}
+          <button onClick={() => {
+            window.location.href = '/student/coding';
+          }}
             className="w-full py-4 rounded-2xl text-white font-bold text-lg bg-indigo-900 hover:bg-indigo-800">
             Continue to Coding Round →
           </button>
         ) : (
-          <button onClick={() => router.push('/student')}
+          <button onClick={() => {
+            window.location.href = '/student';
+          }}
             className="w-full py-4 rounded-2xl text-white font-bold text-lg bg-red-500 hover:bg-red-600">
             Return to Dashboard
           </button>
@@ -350,7 +344,7 @@ export default function AptitudePage() {
 
   return (
     <div className="min-h-screen bg-gray-50 py-6 px-4 select-none">
-      {phase === 'test' && <FaceDetection mode="floating" onViolation={handleViolation} />}
+      {phase === 'test' && <FaceDetection mode="floating" onViolation={handleAIViolation} />}
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-6">
         <div className="lg:col-span-3 space-y-4">
           <div className="flex items-center justify-between bg-white rounded-2xl px-6 py-4 shadow-sm border border-gray-100">
@@ -364,8 +358,6 @@ export default function AptitudePage() {
                   <div className={`w-1.5 h-1.5 rounded-full ${isFullScreen ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
                   <span className="text-slate-500 uppercase tracking-tighter">AI Status</span>
                </div>
-               <div className="w-px h-3 bg-slate-200" />
-               <div className="text-slate-500 uppercase tracking-tighter">FS: <span className={fsViolations > 0 ? 'text-red-500' : ''}>{fsViolations}/2</span></div>
                <div className="w-px h-3 bg-slate-200" />
                <div className="text-slate-500 uppercase tracking-tighter">Violations: <span className={totalViolations > 0 ? 'text-red-500' : ''}>{totalViolations}/5</span></div>
             </div>

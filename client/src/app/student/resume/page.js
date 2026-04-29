@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useInterviewStore } from '@/hooks/useInterviewStore';
 import Skeleton from '@/components/ui/Skeleton';
 import { ArrowLeft } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
 
 export default function ResumePage() {
@@ -49,6 +50,9 @@ export default function ResumePage() {
       
       const res = await fetch('http://localhost:5001/resume/upload', {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
         body: formData,
       });
       
@@ -56,6 +60,13 @@ export default function ResumePage() {
       if (!res.ok) throw new Error(data.message || 'Upload failed');
       
       setResumeData(data.analysis);
+
+      // Persist the new token to allow stage-based navigation
+      if (data.newToken) {
+        localStorage.setItem('token', data.newToken);
+        document.cookie = `token=${data.newToken}; path=/; max-age=86400; SameSite=Lax`;
+        toast.success('Resume analyzed! You are now eligible for the Aptitude Test.');
+      }
     } catch (err) {
       setError(err.message || 'Upload failed. Please try again.');
     } finally {

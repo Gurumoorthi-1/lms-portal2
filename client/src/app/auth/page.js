@@ -60,6 +60,9 @@ export default function AuthPage() {
         // Save the login-time user snapshot as cache
         localStorage.setItem('user', JSON.stringify(data.user));
 
+        // Set cookie for Middleware access
+        document.cookie = `token=${data.access_token}; path=/; max-age=86400; SameSite=Lax`;
+
         // Immediately sync with DB to get the freshest user data (xp, level, streak)
         await fetchUserFromDB();
 

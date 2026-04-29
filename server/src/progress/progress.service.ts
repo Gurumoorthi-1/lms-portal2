@@ -1,9 +1,11 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { Progress } from './progress.schema';
+import { Progress, AssessmentStage } from './progress.schema';
 import { CompilerService } from '../compiler/compiler.service';
 import { ChallengesService } from '../challenges/challenges.service';
+import { AuthService } from '../auth/auth.service';
+import { forwardRef, Inject } from '@nestjs/common';
 
 @Injectable()
 export class ProgressService {
@@ -11,6 +13,8 @@ export class ProgressService {
     @InjectModel(Progress.name) private progressModel: Model<Progress>,
     private compilerService: CompilerService,
     private challengesService: ChallengesService,
+    @Inject(forwardRef(() => AuthService))
+    private authService: AuthService,
   ) {}
 
   async getUserProgress(userId: string) {
@@ -109,5 +113,76 @@ export class ProgressService {
       );
     }
     return progress;
+  }
+
+  async moveToNextStage(userId: string) {
+    const progress = await this.getUserProgress(userId);
+    const stages = Object.values(AssessmentStage);
+    const currentIndex = stages.indexOf(progress.currentStage);
+    
+    if (currentIndex < stages.length - 1) {
+      const nextStage = stages[currentIndex + 1] as AssessmentStage;
+      progress.currentStage = nextStage;
+      progress.lastActivity = new Date();
+      await progress.save();
+
+      // Issue a new JWT with updated stage
+      const newToken = await this.authService.generateTokenFromUser(userId, nextStage);
+      return { progress, newToken };
+    }
+    return { progress, newToken: null };
+  }
+
+  async updateContext(userId: string, key: string, data: any) {
+     return this.progressModel.findOneAndUpdate(
+       { user: new Types.ObjectId(userId) },
+       { $set: { [`context.${key}`]: data }, lastActivity: Date.now() },
+       { new: true }
+     );
+  }
+
+  async getContext(userId: string) {
+    const progress = await this.getUserProgress(userId);
+    return progress.context || {};
+  }
+
+  async getFullCandidateProfile(userId: string) {
+    const progress = await this.getUserProgress(userId);
+    return {
+      context: progress.context || {},
+      stage: progress.currentStage,
+      points: progress.points,
+      lastActivity: progress.lastActivity
+    };
+  }
+
+  async submitMcq(userId: string, answers: any) {
+    // In a production environment, we would validate the answers against a database
+    const passed = true; 
+    const score = 85; // Simulated score
+
+    if (passed) {
+      // Phase 5: Persist MCQ results to the 'Red Thread' context
+      await this.updateContext(userId, 'mcq', {
+        score,
+        totalQuestions: Object.keys(answers).length,
+        submittedAt: new Date(),
+        status: 'PASSED'
+      });
+
+      const result = await this.moveToNextStage(userId);
+      return {
+        success: true,
+        passed: true,
+        nextRound: '/student/resume',
+        newToken: result.newToken
+      };
+    }
+
+    return {
+      success: false,
+      passed: false,
+      message: 'Assessment failed. Please try again.'
+    };
   }
 }

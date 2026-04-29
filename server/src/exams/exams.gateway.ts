@@ -87,4 +87,9 @@ export class ExamsGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
     console.log('Emitting real-time instructor stats update');
     this.server.emit('instructorStatsUpdated', data);
   }
+
+  emitViolation(data: any) {
+    console.log('Emitting real-time violation alert to instructors');
+    this.server.emit('violationLogged', data);
+  }
 }

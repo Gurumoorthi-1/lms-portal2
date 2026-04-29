@@ -113,7 +113,12 @@ const ExamCard = ({ exam, index }) => {
       </div>
 
       <div className="flex items-center justify-between md:justify-end gap-8">
-         {exam.status === 'completed' && (exam.score || 0) >= 70 ? (
+         {exam.status === 'disqualified' ? (
+           <div className="text-right">
+             <div className="text-xl font-black text-red-500 uppercase">Blocked</div>
+             <div className="text-[10px] uppercase font-bold text-red-400">Security Breach</div>
+           </div>
+         ) : exam.status === 'completed' && (exam.score || 0) >= 70 ? (
            <div className="text-right">
              <div className="text-xl font-black text-[#0F172A]">{exam.score}%</div>
              <div className="text-[10px] uppercase font-bold text-[#22C55E]">Completed</div>

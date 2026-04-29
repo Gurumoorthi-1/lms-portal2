@@ -278,11 +278,22 @@ export class ExamsService {
   }
 
   async logViolation(id: string, violation: any): Promise<Exam | null> {
-    return this.examModel.findByIdAndUpdate(
+    const updated = await this.examModel.findByIdAndUpdate(
       id,
-      { $push: { violations: violation } },
+      { $push: { violations: { ...violation, timestamp: new Date() } } },
       { new: true }
     ).exec();
+
+    if (updated) {
+      this.examsGateway.emitViolation({
+        examId: id,
+        title: updated.title,
+        userId: updated.userId,
+        violation
+      });
+    }
+
+    return updated;
   }
 
   async getAnalytics(userId?: string): Promise<any> {

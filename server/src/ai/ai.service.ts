@@ -299,7 +299,13 @@ IMPORTANT for primaryProgrammingLanguage: Only choose ONE from [javascript, pyth
       return JSON.parse(response.choices?.[0]?.message?.content || '{}');
     } catch (error) {
       console.error('Resume Analysis Error:', error);
-      throw new BadRequestException('Failed to analyze resume via AI');
+      if (error?.status === 402 || error?.code === 402) {
+        throw new BadRequestException('AI Service credit limit reached. Resume analysis unavailable.');
+      }
+      if (error?.status === 429) {
+        throw new BadRequestException('AI Service rate limit exceeded. Please wait a moment.');
+      }
+      throw new BadRequestException('Failed to analyze resume: ' + (error?.message || 'Unknown AI Error'));
     }
   }
 
@@ -409,7 +415,13 @@ Return ONLY valid JSON array (no extra text):
       return match ? JSON.parse(match[0]) : JSON.parse(rawText);
     } catch (error) {
       console.error('Coding Problem Generation Error:', error);
-      throw new BadRequestException('Failed to generate coding problems');
+      if (error?.status === 402 || error?.code === 402) {
+        throw new BadRequestException('AI Service credit limit reached. Please check your OpenRouter/OpenAI balance.');
+      }
+      if (error?.status === 429) {
+        throw new BadRequestException('AI Service rate limit exceeded. Please try again in a moment.');
+      }
+      throw new BadRequestException('Failed to generate coding problems: ' + (error?.message || 'Unknown Error'));
     }
   }
 
@@ -448,7 +460,10 @@ Return:
       return JSON.parse(response.choices?.[0]?.message?.content || '{}');
     } catch (error) {
       console.error('Code Evaluation Error:', error);
-      throw new BadRequestException('Failed to evaluate code');
+      if (error?.status === 402 || error?.code === 402) {
+        throw new BadRequestException('AI Service credit limit reached. Code evaluation unavailable.');
+      }
+      throw new BadRequestException('Failed to evaluate code: ' + (error?.message || 'Unknown Error'));
     }
   }
 

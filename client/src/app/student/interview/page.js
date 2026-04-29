@@ -8,6 +8,7 @@ import Skeleton from '@/components/ui/Skeleton';
 import dynamic from 'next/dynamic';
 import toast from 'react-hot-toast';
 import Modal from '@/components/ui/Modal';
+import { useSecurity } from '@/components/providers/SecurityProvider';
 
 import { useSpeech } from '@/hooks/useSpeech';
 import { useEmotionAnalysis } from '@/hooks/useEmotionAnalysis';
@@ -36,93 +37,18 @@ export default function InterviewPage() {
   const [emotionReport, setEmotionReport] = useState(null);
   const textareaRef = useRef(null);
 
-  // Security / Proctoring state
-  const [totalViolations, setTotalViolations] = useState(0);
-  const [fsViolations, setFsViolations] = useState(0);
+  // Security Orchestrator
+  const { 
+    totalViolations, 
+    isDisqualified, 
+    startSecurity, 
+    reportViolation,
+    config: securityConfig
+  } = useSecurity();
+
   const [isFullScreen, setIsFullScreen] = useState(false);
-  const lastViolationRef = useRef(0);
-  const [isDisqualified, setIsDisqualified] = useState(false);
   const isRequestingPermissionRef = useRef(false);
   const pageLoadTimeRef = useRef(Date.now());
-
-  const handleViolation = useCallback(async (reason, severity = 'warning', type = 'general') => {
-    const now = Date.now();
-    if (now - lastViolationRef.current < 3000) return;
-
-    // Ignore blur violations during permission requests or first 10s of page load
-    if (type === 'tab_switch' && reason === 'Window lost focus') {
-      if (isRequestingPermissionRef.current || (now - pageLoadTimeRef.current < 10000)) {
-        return;
-      }
-    }
-
-    lastViolationRef.current = now;
-
-    const isFullScreenExit = type === 'screen_exit';
-
-    if (isFullScreenExit) {
-      setFsViolations(prev => {
-        const newCount = prev + 1;
-        toast.error(`Security Alert: ${reason}. Final warning!`, { id: 'security_alert', duration: 5000, icon: '⚠️', style: { border: '2px solid #ef4444', background: '#0f172a', color: '#fff' } });
-        return newCount;
-      });
-    } else {
-      setTotalViolations(prev => {
-        const newCount = prev + 1;
-        toast.error(`Security Alert: ${reason}. Violation ${newCount}/5`, { id: 'security_alert', duration: 5000, icon: '🛡️', style: { border: '2px solid #ef4444', background: '#0f172a', color: '#fff' } });
-        return newCount;
-      });
-    }
-  }, []);
-
-  const forceDisqualify = useCallback(() => {
-    toast.error("TEST TERMINATED: Security protocol breached.", { duration: 6000 });
-    setIsDisqualified(true);
-    if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if ((totalViolations >= 5 || fsViolations >= 2) && !isDisqualified) {
-      forceDisqualify();
-    }
-  }, [totalViolations, fsViolations, forceDisqualify, isDisqualified]);
-
-  useEffect(() => {
-    if (isDisqualified) return;
-
-    const handleVisibilityChange = () => {
-      if (document.hidden) handleViolation("Tab switching detected", "severe", "tab_switch");
-    };
-    
-    const handleFullscreenChange = () => {
-      if (!document.fullscreenElement) {
-        setIsFullScreen(false);
-        handleViolation("Exited full-screen mode", "severe", "screen_exit");
-        setTimeout(() => {
-          if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
-            document.documentElement.requestFullscreen().catch(()=> {
-              handleViolation("Refused full-screen mode", "severe", "screen_exit");
-            });
-          }
-        }, 2000);
-      } else {
-        setIsFullScreen(true);
-      }
-    };
-
-    const handleBlur = () => {
-      handleViolation("Window lost focus", "severe", "tab_switch");
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    window.addEventListener('blur', handleBlur);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-      window.removeEventListener('blur', handleBlur);
-    };
-  }, [handleViolation, isDisqualified]);
 
   const toggleFullScreen = useCallback(() => {
     if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
@@ -146,7 +72,16 @@ export default function InterviewPage() {
     generateReport,
   } = useEmotionAnalysis({ videoRef, enabled: cameraReady });
 
+  const [isHydrated, setIsHydrated] = useState(false);
+
   useEffect(() => {
+    const unsub = useInterviewStore.persist.onFinishHydration(() => setIsHydrated(true));
+    if (useInterviewStore.persist.hasHydrated()) setIsHydrated(true);
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (!isHydrated) return;
     if (!skills || skills.length === 0) {
       router.push('/student/resume');
       return;
@@ -160,11 +95,23 @@ export default function InterviewPage() {
         };
         const res = await fetch('http://localhost:5001/interview/generate', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
           body: JSON.stringify({ context: ctx, totalQuestions: 5 })
         });
         const data = await res.json();
         setQuestions(data.questions || []);
+        
+        // Start Unified Security Session
+        startSecurity({ 
+          sessionId: 'assessment-interview-session', 
+          round: 'interview',
+          maxViolations: 5,
+          maxCritical: 2
+        });
+
         setTimeout(() => {
           if (data.questions?.[0]) speak(data.questions[0].question);
         }, 1500);
@@ -202,7 +149,10 @@ export default function InterviewPage() {
     try {
       const res = await fetch('http://localhost:5001/interview/evaluate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
         body: JSON.stringify({ question: currentQ.question, answer: answerText, evaluationCriteria: currentQ.evaluationCriteria })
       });
       const data = await res.json();
@@ -246,6 +196,21 @@ export default function InterviewPage() {
   const doComplete = async () => {
     setCompleting(true);
     try {
+      // Call the finish endpoint to promote to FINISHED stage
+      const res = await fetch('http://localhost:5001/interview/finish', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      const data = await res.json();
+
+      if (data.newToken) {
+        localStorage.setItem('token', data.newToken);
+        document.cookie = `token=${data.newToken}; path=/; max-age=86400; SameSite=Lax`;
+      }
+
       const finalRes = {
         answers,
         analyses,
@@ -255,7 +220,7 @@ export default function InterviewPage() {
       if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
       router.push('/student/analytics');
     } catch (err) {
-      alert('Error: ' + err.message);
+      alert('Error finalizing interview: ' + err.message);
     } finally {
       setCompleting(false);
     }
@@ -479,8 +444,6 @@ export default function InterviewPage() {
           <div className="space-y-4">
             <ProctoringPanel 
               videoRef={videoRef}
-              onViolation={handleViolation}
-              totalViolations={totalViolations}
               cameraReady={cameraReady} 
               warnings={warnings} 
               permissionError={permissionError} 

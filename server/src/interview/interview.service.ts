@@ -5,11 +5,15 @@ import { AiService } from '../ai/ai.service';
 export class InterviewService {
   constructor(private readonly aiService: AiService) {}
 
-  async generateQuestions(skills: string[], experience: string[]): Promise<any[]> {
+  async generateQuestions(context: any): Promise<any[]> {
+    const skills = context?.resume?.skills || [];
+    const experience = context?.resume?.experience || [];
+    
     const skillsString = skills.slice(0, 5).join(', ');
     const expString = experience.slice(0, 3).join('; ');
 
-    const questions = await this.aiService.generateHRQuestions(skillsString, expString);
+    // Phase 5: Pass the entire context to AI for deep-dive questions
+    const questions = await this.aiService.generateHRQuestions(skillsString, expString, context);
 
     if (!questions || questions.length === 0) {
       throw new BadRequestException('Failed to generate interview questions.');

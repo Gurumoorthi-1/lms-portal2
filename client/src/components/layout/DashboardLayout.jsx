@@ -162,7 +162,7 @@ export default function DashboardLayout({ children }) {
     { icon: LayoutDashboard, label: 'Dashboard', href: '/student' },
     { icon: BarChart3, label: 'Analytics', href: '/analytics' },
     { icon: Code, label: 'Code Lab', href: '/codelab' },
-    { icon: User, label: 'Personal Interview', href: '/student/resume' },
+    { icon: User, label: 'Personal Interview', href: '/exam-player' },
     { type: 'header', label: 'Code Path' },
     { icon: BookOpen, label: 'Learning Paths', href: '/courses' },
     { icon: Binary, label: 'Practice Arena', href: '/problems' },

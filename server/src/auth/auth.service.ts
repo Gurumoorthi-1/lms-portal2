@@ -27,8 +27,8 @@ export class AuthService {
     return this.login(user); // Automatically login after register
   }
 
-  async login(user: any) {
-    const payload = { email: user.email, sub: user._id };
+  async login(user: any, currentStage: string = 'MCQ') {
+    const payload = { email: user.email, sub: user._id, currentStage };
     return {
       access_token: this.jwtService.sign(payload),
       user: {
@@ -38,8 +38,16 @@ export class AuthService {
         role: user.role || (user.email.includes('instructor') ? 'instructor' : 'student'),
         xp: user.xp,
         level: user.level,
+        currentStage,
       },
     };
+  }
+
+  async generateTokenFromUser(userId: string, currentStage: string) {
+    const user = await this.userModel.findById(userId);
+    if (!user) throw new UnauthorizedException('User not found during token generation');
+    const payload = { email: user.email, sub: user._id, currentStage };
+    return this.jwtService.sign(payload);
   }
 
   async validateUser(email: string, pass: string): Promise<any> {

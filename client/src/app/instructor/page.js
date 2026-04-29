@@ -123,9 +123,20 @@ export default function InstructorDashboard() {
        fetchStats(timeFilter, true);
     });
 
+    socket.on('violationLogged', (data) => {
+      console.log('🚨 Violation Alert received:', data);
+      toast.error(`SECURITY BREACH: ${data.violation.reason}`, {
+        duration: 6000,
+        icon: '🛡️',
+        style: { border: '2px solid #ef4444', background: '#fef2f2', fontWeight: 'bold' }
+      });
+      fetchStats(timeFilter, true);
+    });
+
     return () => {
       socket.off('instructorStatsUpdated');
       socket.off('userStatusChanged');
+      socket.off('violationLogged');
     };
   }, [timeFilter]);
 

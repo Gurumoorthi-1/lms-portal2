@@ -9,12 +9,14 @@ import CodeEditor from '@/components/codelab/CodeEditor';
 import { ArrowLeft, ShieldAlert, Maximize2, Minimize2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '@/components/ui/Modal';
+import { useSecurity } from '@/components/providers/SecurityProvider';
 
 const FaceDetection = dynamic(() => import('@/components/exam/FaceDetection'), { ssr: false });
 
 
 const DIFF_COLORS = { easy: '#10b981', medium: '#f59e0b', hard: '#ef4444' };
 const LANG_LABELS = { javascript: 'JavaScript', python: 'Python', java: 'Java', cpp: 'C++' };
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
 
 export default function CodingPage() {
   const router = useRouter();
@@ -29,105 +31,60 @@ export default function CodingPage() {
   const [submissions, setSubmissions] = useState({});
   const [loading, setLoading] = useState(true);
 
-  const [totalViolations, setTotalViolations] = useState(0);
-  const [fsViolations, setFsViolations] = useState(0);
+  // Security Orchestrator
+  const { 
+    totalViolations, 
+    isDisqualified, 
+    startSecurity, 
+    reportViolation,
+    config: securityConfig
+  } = useSecurity();
+
   const [isFullScreen, setIsFullScreen] = useState(false);
-  const lastViolationRef = useRef(0);
-  const [isDisqualified, setIsDisqualified] = useState(false);
   const pageLoadTimeRef = useRef(Date.now());
 
-  const handleViolation = useCallback(async (reason, severity = 'warning', type = 'general') => {
-    const now = Date.now();
-    if (now - lastViolationRef.current < 3000) return;
-
-    // Ignore blur violations during first 15s of page load (permission popups)
-    if (type === 'tab_switch' && reason === 'Window lost focus') {
-      if (now - pageLoadTimeRef.current < 15000) return;
-    }
-
-    lastViolationRef.current = now;
-
-    const isFullScreenExit = type === 'screen_exit';
-
-    if (isFullScreenExit) {
-      setFsViolations(prev => {
-        const newCount = prev + 1;
-        toast.error(`Security Alert: ${reason}. Final warning!`, { id: 'security_alert', duration: 5000, icon: '⚠️', style: { border: '2px solid #ef4444', background: '#0f172a', color: '#fff' } });
-        return newCount;
-      });
-    } else {
-      setTotalViolations(prev => {
-        const newCount = prev + 1;
-        toast.error(`Security Alert: ${reason}. Violation ${newCount}/5`, { id: 'security_alert', duration: 5000, icon: '🛡️', style: { border: '2px solid #ef4444', background: '#0f172a', color: '#fff' } });
-        return newCount;
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    if (totalViolations >= 5 || fsViolations >= 2) {
-      if (!isDisqualified) {
-        toast.error("TEST TERMINATED: Security protocol breached.", { duration: 6000, style: { background: '#ef4444', color: '#fff', fontWeight: 'bold' } });
-        setIsDisqualified(true);
-      }
-    }
-  }, [totalViolations, fsViolations, isDisqualified]);
-
-  useEffect(() => {
-    if (isDisqualified) return;
-
-    const handleVisibilityChange = () => {
-      if (document.hidden) handleViolation("Tab switching detected", "severe", "tab_switch");
-    };
-    
-    const handleFullscreenChange = () => {
-      if (!document.fullscreenElement) {
-        setIsFullScreen(false);
-        handleViolation("Exited full-screen mode", "severe", "screen_exit");
-        setTimeout(() => {
-          if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
-            document.documentElement.requestFullscreen().catch(()=> {
-              handleViolation("Refused full-screen mode", "severe", "screen_exit");
-            });
-          }
-        }, 2000);
-      } else {
-        setIsFullScreen(true);
-      }
-    };
-
-    const handleBlur = () => {
-      handleViolation("Window lost focus", "severe", "tab_switch");
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    window.addEventListener('blur', handleBlur);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-      window.removeEventListener('blur', handleBlur);
-    };
-  }, [handleViolation, isDisqualified]);
+  // Handle specialized AI violations from components
+  const handleAIViolation = useCallback((reason, severity = 'warning', type = 'ai_alert') => {
+    reportViolation(type, reason, severity);
+  }, [reportViolation]);
 
   const toggleFullScreen = useCallback(() => {
     if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
     else document.exitFullscreen?.();
   }, []);
 
+  const [isHydrated, setIsHydrated] = useState(false);
+
   useEffect(() => {
+    // Wait for Zustand hydration
+    const unsub = useInterviewStore.persist.onFinishHydration(() => {
+      setIsHydrated(true);
+    });
+    
+    // Check if already hydrated
+    if (useInterviewStore.persist.hasHydrated()) {
+      setIsHydrated(true);
+    }
+
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    
     if (!skills || skills.length === 0) {
       router.push('/student/resume');
       return;
     }
     
-    // Auto detect language from skills
-    let lang = 'javascript';
-    const skillsLower = skills.join(' ').toLowerCase();
-    if (skillsLower.includes('python')) lang = 'python';
-    else if (skillsLower.includes('java ') || skillsLower === 'java') lang = 'java';
-    else if (skillsLower.includes('c++') || skillsLower.includes('cpp')) lang = 'cpp';
+    // Improved auto detection language from skills
+    const getPreferredLanguage = (userSkills) => {
+      const priorities = ['python', 'java', 'cpp', 'javascript', 'typescript'];
+      const skillsLower = userSkills.map(s => s.toLowerCase());
+      return priorities.find(p => skillsLower.some(s => s.includes(p))) || 'javascript';
+    };
     
+    const lang = getPreferredLanguage(skills);
     setDetectedLanguage(lang);
 
     (async () => {
@@ -139,9 +96,12 @@ export default function CodingPage() {
           projects: '',
           resumeText: resumeData?.summary || ''
         };
-        const res = await fetch('http://localhost:5001/challenges/generate-ai', {
+        const res = await fetch(`${API_BASE}/challenges/generate-ai`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
           body: JSON.stringify({ context: ctx, language: lang })
         });
         const data = await res.json();
@@ -150,9 +110,17 @@ export default function CodingPage() {
           setProblems(data);
           const starter = data[0]?.starterCode?.[lang] || '';
           setCode(starter);
+          
+          // Start Unified Security Session
+          startSecurity({ 
+            sessionId: 'assessment-coding-session', 
+            round: 'coding',
+            maxViolations: 5,
+            maxCritical: 2
+          });
+
           if (document.documentElement.requestFullscreen) {
             document.documentElement.requestFullscreen().catch(() => {});
-            setIsFullScreen(true);
           }
         } else {
           throw new Error('Invalid format returned from AI');
@@ -179,7 +147,7 @@ export default function CodingPage() {
     setRunning(true);
     setRunResults(null);
     try {
-      const res = await fetch('http://localhost:5001/compiler/run', {
+      const res = await fetch(`${API_BASE}/compiler/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ language: detectedLanguage, code, input: '' })
@@ -197,12 +165,23 @@ export default function CodingPage() {
     if (!activeProblem || !code.trim()) return;
     setSubmitting(true);
     try {
-      const res = await fetch('http://localhost:5001/challenges/evaluate-ai', {
+      const res = await fetch(`${API_BASE}/challenges/evaluate-ai`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
         body: JSON.stringify({ problem: activeProblem, language: detectedLanguage, code })
       });
       const data = await res.json();
+
+      // Persist the new token to allow stage-based navigation to HR Interview
+      if (data.newToken) {
+        localStorage.setItem('token', data.newToken);
+        document.cookie = `token=${data.newToken}; path=/; max-age=86400; SameSite=Lax`;
+        toast.success('Coding challenge accepted! Stage promoted.');
+      }
+
       setSubmissions(prev => ({ ...prev, [activeProblem.id]: data }));
       setRunResults({ ...data, type: 'submit' });
     } catch (err) {
@@ -215,7 +194,9 @@ export default function CodingPage() {
   const handleComplete = async () => {
     setCodingResults(submissions);
     if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
-    router.push('/student/interview');
+    
+    // Force location change for testing/production reliability
+    window.location.href = '/student/interview';
   };
 
   const solvedCount = Object.values(submissions).filter(s => s.passed).length;
@@ -250,7 +231,7 @@ export default function CodingPage() {
   );
   return (
     <div className="h-screen flex flex-col bg-gray-900 text-white select-none overflow-hidden">
-      {!isDisqualified && <FaceDetection mode="floating" onViolation={handleViolation} />}
+      {!isDisqualified && <FaceDetection mode="floating" onViolation={handleAIViolation} />}
       <div className="bg-gray-800 border-b border-gray-700 px-4 py-1.5 flex items-center gap-4 shrink-0">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <button 
@@ -285,8 +266,6 @@ export default function CodingPage() {
                 <div className={`w-1.5 h-1.5 rounded-full ${isFullScreen ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
                 <span className="text-gray-400 uppercase tracking-tighter whitespace-nowrap">AI Status</span>
              </div>
-             <div className="w-px h-3 bg-gray-700" />
-             <div className="text-gray-400 uppercase tracking-tighter whitespace-nowrap">FS: <span className={fsViolations > 0 ? 'text-red-500' : ''}>{fsViolations}/2</span></div>
              <div className="w-px h-3 bg-gray-700" />
              <div className="text-gray-400 uppercase tracking-tighter whitespace-nowrap">Violations: <span className={totalViolations > 0 ? 'text-red-500' : ''}>{totalViolations}/5</span></div>
           </div>
