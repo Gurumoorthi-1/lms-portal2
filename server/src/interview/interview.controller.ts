@@ -50,7 +50,7 @@ export class InterviewController {
     await this.progressService.updateContext(req.user.userId, 'interview.status', 'completed');
     
     // Final Stage Transition: FINISHED
-    const stageResult = await this.progressService.moveToNextStage(req.user.userId);
+    const stageResult = await this.progressService.moveToNextStage(req.user.userId, AssessmentStage.HR_INTERVIEW);
     return {
       success: true,
       message: 'Assessment completed successfully!',

@@ -14,14 +14,15 @@ export class AuthService {
 
   async register(authDto: any) {
     const { username, email, password } = authDto;
-    const existingUser = await this.userModel.findOne({ email });
+    const normalizedEmail = email.toLowerCase();
+    const existingUser = await this.userModel.findOne({ email: normalizedEmail });
     if (existingUser) {
       throw new ConflictException('User already exists');
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const role = email.toLowerCase().includes('instructor') ? 'instructor' : 'student';
-    const user = new this.userModel({ username, email, password: hashedPassword, role });
+    const role = normalizedEmail.includes('instructor') ? 'instructor' : 'student';
+    const user = new this.userModel({ username, email: normalizedEmail, password: hashedPassword, role });
     await user.save();
 
     return this.login(user); // Automatically login after register
@@ -51,7 +52,8 @@ export class AuthService {
   }
 
   async validateUser(email: string, pass: string): Promise<any> {
-    const user = await this.userModel.findOne({ email });
+    const normalizedEmail = email.toLowerCase();
+    const user = await this.userModel.findOne({ email: normalizedEmail });
     if (user && (await bcrypt.compare(pass, user.password as string))) {
       return user;
     }

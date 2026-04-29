@@ -153,6 +153,9 @@ export default function DashboardLayout({ children }) {
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    localStorage.removeItem('lms-interview-storage');
+    // Also clear cookie
+    document.cookie = 'token=; Max-Age=0; path=/;';
     toast.success('Logged out successfully');
     router.replace('/auth');
   };

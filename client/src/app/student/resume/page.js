@@ -74,7 +74,28 @@ export default function ResumePage() {
     }
   };
 
-  const handleProceed = () => router.push('/student/aptitude');
+  const handleProceed = async () => {
+    try {
+      // Force promotion to ensure token is synced even if resume was loaded from cache.
+      // Pass fromStage to prevent double-promotion if already promoted.
+      const res = await fetch('http://localhost:5001/progress/next-stage', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}` 
+        },
+        body: JSON.stringify({ fromStage: 'RESUME_UPLOAD' })
+      });
+      const data = await res.json();
+      if (data.newToken) {
+        localStorage.setItem('token', data.newToken);
+        document.cookie = `token=${data.newToken}; path=/; max-age=86400; SameSite=Lax`;
+      }
+    } catch (err) {
+      console.error('Failed to sync stage before navigation:', err);
+    }
+    window.location.href = '/student/aptitude';
+  };
 
   const atsColor = analysis?.atsScore >= 80 ? '#10b981' : analysis?.atsScore >= 60 ? '#f59e0b' : '#ef4444';
   const circumference = 2 * Math.PI * 40;

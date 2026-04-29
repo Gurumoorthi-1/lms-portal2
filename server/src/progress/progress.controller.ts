@@ -19,8 +19,9 @@ export class ProgressController {
 
   @UseGuards(JwtAuthGuard)
   @Post('next-stage')
-  async nextStage(@Request() req: any) {
-    return this.progressService.moveToNextStage(req.user.userId);
+  async nextStage(@Request() req: any, @Body('fromStage') fromStage?: string) {
+    // Cast string to enum if provided
+    return this.progressService.moveToNextStage(req.user.userId, fromStage as any);
   }
 
   @UseGuards(JwtAuthGuard)

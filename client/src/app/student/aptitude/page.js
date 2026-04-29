@@ -331,12 +331,28 @@ export default function AptitudePage() {
             Continue to Coding Round →
           </button>
         ) : (
-          <button onClick={() => {
-            window.location.href = '/student';
-          }}
-            className="w-full py-4 rounded-2xl text-white font-bold text-lg bg-red-500 hover:bg-red-600">
-            Return to Dashboard
-          </button>
+          <div className="space-y-3">
+            <button onClick={() => {
+              // Complete reset for retest
+              setPhase('setup');
+              setResults(null);
+              setSubmitted(false);
+              setAnswers({});
+              setHintsUsed({});
+              setCurrentIdx(0);
+              setShowHint(false);
+              setLoading(false);
+            }}
+              className="w-full py-4 rounded-2xl text-white font-bold text-lg bg-orange-500 hover:bg-orange-600 shadow-lg shadow-orange-500/20">
+              🔄 Retest Now
+            </button>
+            <button onClick={() => {
+              window.location.href = '/student';
+            }}
+              className="w-full py-4 rounded-2xl text-gray-500 font-bold text-lg border-2 border-gray-100 hover:bg-gray-50 transition-all">
+              Return to Dashboard
+            </button>
+          </div>
         )}
       </div>
     </div>

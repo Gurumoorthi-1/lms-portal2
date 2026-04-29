@@ -314,8 +314,8 @@ IMPORTANT for primaryProgrammingLanguage: Only choose ONE from [javascript, pyth
 
 CRITICAL INSTRUCTIONS:
 1. NO TECHNICAL/CODING QUESTIONS: Questions MUST be strictly general aptitude.
-2. ACCURACY: Each question must have EXACTLY one logically and mathematically correct answer. Double-check all calculations.
-3. CLEAR OPTIONS: All 4 options must be distinct and unique. Distractors (wrong answers) should be plausible but clearly incorrect upon calculation/reasoning. Do not repeat values.
+2. ACCURACY & OPTIONS: Each question must have EXACTLY one logically and mathematically correct answer. The options array MUST contain the actual numerical or verbal answers (e.g., "45", "Brother", "10%"). DO NOT generate generic placeholders like "Option A", "Option B".
+3. GUARANTEED CORRECT OPTION: You MUST ensure that the exact correct answer is present as one of the 4 items in the 'options' array.
 4. VALID JSON: Return only a valid JSON array.
 5. CATEGORIES: Provide a balanced mix of:
    - Quantitative Aptitude (percentages, profit/loss, time/work, ratios, simple/compound interest, algebra).
@@ -328,7 +328,7 @@ Return ONLY valid JSON array in this format:
   {
     "id": "q1",
     "question": "Clear, unambiguous question text",
-    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "options": ["Actual Answer 1", "Actual Answer 2", "Actual Answer 3", "Actual Answer 4"],
     "correctAnswer": 0, 
     "hint": "Brief hint to guide the candidate",
     "category": "quantitative | logical | verbal | di",
@@ -337,7 +337,7 @@ Return ONLY valid JSON array in this format:
   }
 ]
 
-IMPORTANT: The 'correctAnswer' index (0-3) MUST strictly match the correct value in the 'options' array. Ensure there are no ambiguous or "none of the above" style questions unless specifically intended.`;
+IMPORTANT: The 'correctAnswer' MUST be an integer between 0 and 3 representing the EXACT index of the true correct answer in your 'options' array. Ensure there are no ambiguous questions.`;
 
     try {
       const response: any = await this.openai.chat.completions.create({
@@ -467,17 +467,25 @@ Return:
     }
   }
 
-  async generateHRQuestions(skills: string, experience: string): Promise<any[]> {
-    const prompt = `Generate 8 HR interview questions for a candidate with these details:
-Skills: ${skills}
-Experience: ${experience}
-
-Create a mix of:
-- 1 Self-introduction prompt
-- 2 Experience-based questions
-- 2 Behavioral questions (STAR format)
-- 2 Resume/skills-specific questions
-- 1 Future goals question
+  async generateHRQuestions(skills: string, experience: string, context?: any): Promise<any[]> {
+    const prompt = `Generate 8 deep-dive HR interview questions for a candidate.
+    
+    CANDIDATE HISTORY (The Red Thread):
+    - Skills: ${skills}
+    - Experience: ${experience}
+    - Assessment Context: ${JSON.stringify(context || {})}
+    
+    CRITICAL INSTRUCTIONS:
+    - Use the Assessment Context to ask about their performance in previous rounds.
+    - If they did great in Coding but weak in Aptitude, ask how they balance logic vs. speed.
+    - Reference their specific resume skills.
+    
+    Create a mix of:
+    - 1 Self-introduction prompt
+    - 2 Experience-based questions
+    - 2 Behavioral questions (STAR format)
+    - 2 Technical-leadership questions based on their context
+    - 1 Future goals question
 
 Return ONLY valid JSON array:
 [

@@ -52,9 +52,9 @@ export class AptitudeController {
     });
 
     // Promotion logic: If passed, move to next stage (Coding)
-    let newToken = null;
+    let newToken: string | null = null;
     if (result.passed) {
-      const promo = await this.progressService.moveToNextStage(req.user.userId);
+      const promo = await this.progressService.moveToNextStage(req.user.userId, AssessmentStage.APTITUDE);
       newToken = promo.newToken;
     }
 

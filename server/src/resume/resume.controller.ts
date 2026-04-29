@@ -39,7 +39,7 @@ export class ResumeController {
       await this.progressService.updateContext(req.user.userId, 'resume', analysis);
       
       // Automatically transition to the next stage (Aptitude Test)
-      const result = await this.progressService.moveToNextStage(req.user.userId);
+      const result = await this.progressService.moveToNextStage(req.user.userId, AssessmentStage.RESUME_UPLOAD);
       
       return {
         success: true,

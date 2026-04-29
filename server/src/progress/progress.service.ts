@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { Progress, AssessmentStage } from './progress.schema';
+import { Progress, AssessmentStage, ProgressStatus } from './progress.schema';
 import { CompilerService } from '../compiler/compiler.service';
 import { ChallengesService } from '../challenges/challenges.service';
 import { AuthService } from '../auth/auth.service';
@@ -18,10 +18,11 @@ export class ProgressService {
   ) {}
 
   async getUserProgress(userId: string) {
-    let progress = await this.progressModel.findOne({ user: new Types.ObjectId(userId) });
-    if (!progress) {
-      progress = await this.progressModel.create({ user: new Types.ObjectId(userId) });
-    }
+    const progress = await this.progressModel.findOneAndUpdate(
+      { user: new Types.ObjectId(userId) },
+      { $setOnInsert: { currentStage: AssessmentStage.MCQ, status: ProgressStatus.ACTIVE, points: 0 } },
+      { new: true, upsert: true }
+    );
     return progress;
   }
 
@@ -115,10 +116,16 @@ export class ProgressService {
     return progress;
   }
 
-  async moveToNextStage(userId: string) {
+  async moveToNextStage(userId: string, fromStage?: AssessmentStage) {
     const progress = await this.getUserProgress(userId);
     const stages = Object.values(AssessmentStage);
     const currentIndex = stages.indexOf(progress.currentStage);
+
+    // If fromStage is provided, only promote if it matches currentStage
+    if (fromStage && progress.currentStage !== fromStage) {
+      const currentToken = await this.authService.generateTokenFromUser(userId, progress.currentStage);
+      return { progress, newToken: currentToken };
+    }
     
     if (currentIndex < stages.length - 1) {
       const nextStage = stages[currentIndex + 1] as AssessmentStage;
@@ -170,7 +177,7 @@ export class ProgressService {
         status: 'PASSED'
       });
 
-      const result = await this.moveToNextStage(userId);
+      const result = await this.moveToNextStage(userId, AssessmentStage.MCQ);
       return {
         success: true,
         passed: true,

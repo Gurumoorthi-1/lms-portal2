@@ -195,6 +195,26 @@ export default function CodingPage() {
     setCodingResults(submissions);
     if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
     
+    try {
+      // Force promotion to HR Interview stage to ensure token is synced
+      // Pass fromStage to prevent double-promotion if already promoted via handleSubmit
+      const res = await fetch(`${API_BASE}/progress/next-stage`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}` 
+        },
+        body: JSON.stringify({ fromStage: 'CODING' })
+      });
+      const data = await res.json();
+      if (data.newToken) {
+        localStorage.setItem('token', data.newToken);
+        document.cookie = `token=${data.newToken}; path=/; max-age=86400; SameSite=Lax`;
+      }
+    } catch (err) {
+      console.error('Failed to sync stage before navigation:', err);
+    }
+    
     // Force location change for testing/production reliability
     window.location.href = '/student/interview';
   };

@@ -56,7 +56,7 @@ export class ChallengesController {
 
     if (evaluation.passed) {
       // Transition to HR_INTERVIEW
-      const stageResult = await this.progressService.moveToNextStage(req.user.userId);
+      const stageResult = await this.progressService.moveToNextStage(req.user.userId, AssessmentStage.CODING);
       return {
         ...evaluation,
         newToken: stageResult.newToken
