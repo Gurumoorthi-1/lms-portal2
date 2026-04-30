@@ -156,7 +156,16 @@ export function useEmotionAnalysis({ videoRef, enabled = true }) {
     if (avgConf >= 70) suggestions.push('Your confidence level is excellent — keep it up!');
     if (nervTrend === 'improving') suggestions.push('Great job settling in — your nervousness decreased as the interview progressed.');
 
-    return { avgConf, avgNerv, dominantOverall, nervTrend, suggestions, totalSamples: emotionHistory.length };
+    return { 
+      avgConf, 
+      avgNerv,
+      overallNervousness: avgNerv,
+      dominantOverall, 
+      dominantEmotions: freq,
+      nervTrend, 
+      suggestions, 
+      totalSamples: emotionHistory.length 
+    };
   }, [emotionHistory]);
 
   return {

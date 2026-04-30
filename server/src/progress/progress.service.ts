@@ -192,4 +192,26 @@ export class ProgressService {
       message: 'Assessment failed. Please try again.'
     };
   }
+
+  async resetProgress(userId: string) {
+    // Reset the user's progress completely back to MCQ stage to allow multiple retakes.
+    const progress = await this.progressModel.findOneAndUpdate(
+      { user: new Types.ObjectId(userId) },
+      { 
+        $set: { 
+          currentStage: AssessmentStage.MCQ, 
+          status: ProgressStatus.ACTIVE,
+          context: {} // Clear previous run context to allow fresh evaluation
+        } 
+      },
+      { new: true }
+    ).populate('user');
+
+    if (!progress) {
+      throw new NotFoundException('Progress not found');
+    }
+
+    const newToken = await this.authService.generateTokenFromUser(userId, AssessmentStage.MCQ);
+    return { success: true, newToken, stage: AssessmentStage.MCQ };
+  }
 }

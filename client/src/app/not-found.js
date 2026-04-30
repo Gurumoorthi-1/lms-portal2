@@ -35,21 +35,17 @@ export default function NotFound() {
           transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
           className="relative inline-block mb-6"
         >
-          <div className="text-[120px] sm:text-[150px] font-black text-transparent bg-clip-text bg-gradient-to-r from-[#7C3AED] to-[#2563EB] leading-none drop-shadow-sm select-none tracking-tighter">
-            404
+          <div className="w-20 h-20 bg-gradient-to-br from-[#7C3AED] to-[#2563EB] rounded-3xl flex items-center justify-center shadow-lg shadow-indigo-500/30">
+            <Target size={40} className="text-white" />
           </div>
-          <Ghost 
-            size={80} 
-            className="absolute -top-4 -right-12 text-[#2563EB] opacity-20 transform rotate-12"
-          />
         </motion.div>
 
         <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-[#0F172A] mb-4">
-          Lost in Cyberspace?
+          Full Assessment Already Completed
         </h1>
         
         <p className="text-[#64748B] text-base sm:text-lg font-medium mb-10 leading-relaxed px-4">
-          The page you are looking for has been moved, deleted, or possibly never existed. Let's get you back on track.
+          You have already completed all stages of the assessment process. The page you are trying to access is no longer available. Please return to your dashboard to view your results or retake the assessment.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 px-4">
@@ -80,8 +76,8 @@ export default function NotFound() {
              <Target size={24} />
            </div>
            <div>
-             <h3 className="font-black text-[#0F172A] text-sm mb-1">Looking for your assessments?</h3>
-             <p className="text-xs text-[#64748B] font-semibold leading-relaxed">Head back to the dashboard to find all your active and completed exams securely.</p>
+             <h3 className="font-black text-[#0F172A] text-sm mb-1">Want to improve your score?</h3>
+             <p className="text-xs text-[#64748B] font-semibold leading-relaxed">Head back to the dashboard and click "Retake Full Assessment" to restart all stages and improve your performance.</p>
            </div>
         </motion.div>
       </motion.div>

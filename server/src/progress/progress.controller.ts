@@ -40,4 +40,10 @@ export class ProgressController {
   async submitMcq(@Request() req: any, @Body('answers') answers: any) {
     return this.progressService.submitMcq(req.user.userId, answers);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('reset')
+  async resetProgress(@Request() req: any) {
+    return this.progressService.resetProgress(req.user.userId);
+  }
 }

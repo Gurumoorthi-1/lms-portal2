@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 import { logProctoringEvent } from '@/lib/api';
 
@@ -13,6 +13,7 @@ const SecurityContext = createContext(null);
  */
 export const SecurityProvider = ({ children }) => {
   const router = useRouter();
+  const pathname = usePathname();
   const [violations, setViolations] = useState([]);
   const [violationCounts, setViolationCounts] = useState({ total: 0, critical: 0, fs: 0 });
   const [isDisqualified, setIsDisqualified] = useState(false);
@@ -101,6 +102,10 @@ export const SecurityProvider = ({ children }) => {
   // Global Listeners (Tab/Fullscreen/Shortcuts)
   useEffect(() => {
     if (!config.enabled || isDisqualified) return;
+    
+    // Bypass security listeners completely if the user is on the analytics or student dashboard page
+    const isSafePage = pathname?.includes('/analytics') || pathname === '/student';
+    if (isSafePage) return;
 
     const handleVisibility = () => {
       if (document.hidden) {
@@ -145,9 +150,10 @@ export const SecurityProvider = ({ children }) => {
       window.removeEventListener('keydown', handleKeydown);
       window.removeEventListener('contextmenu', preventContext);
       window.removeEventListener('copy', preventContext);
+      window.removeEventListener('copy', preventContext);
       window.removeEventListener('paste', preventContext);
     };
-  }, [config.enabled, isDisqualified, reportViolation]);
+  }, [config.enabled, isDisqualified, reportViolation, pathname]);
 
   return (
     <SecurityContext.Provider value={{

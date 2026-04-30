@@ -663,4 +663,20 @@ export class ExamsService {
       engagementScore: `${engagementScore}/10`
     };
   }
+
+  async resetUserExams(userId: string) {
+    const userIdObj = this.toObjectId(userId);
+    await this.examModel.updateMany(
+      { userId: userIdObj },
+      { 
+        $set: { 
+          status: 'pending', 
+          score: 0, 
+          userAnswers: {}, 
+          timeSpent: 0 
+        } 
+      }
+    );
+    return { success: true };
+  }
 }

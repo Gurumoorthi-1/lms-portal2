@@ -468,34 +468,40 @@ Return:
   }
 
   async generateHRQuestions(skills: string, experience: string, context?: any): Promise<any[]> {
-    const prompt = `Generate 8 deep-dive HR interview questions for a candidate.
-    
-    CANDIDATE HISTORY (The Red Thread):
-    - Skills: ${skills}
-    - Experience: ${experience}
-    - Assessment Context: ${JSON.stringify(context || {})}
-    
-    CRITICAL INSTRUCTIONS:
-    - Use the Assessment Context to ask about their performance in previous rounds.
-    - If they did great in Coding but weak in Aptitude, ask how they balance logic vs. speed.
-    - Reference their specific resume skills.
-    
-    Create a mix of:
-    - 1 Self-introduction prompt
-    - 2 Experience-based questions
-    - 2 Behavioral questions (STAR format)
-    - 2 Technical-leadership questions based on their context
-    - 1 Future goals question
+    // Extract scores and data from the candidate's context (The 'Red Thread')
+    const mcqScore = context?.mcq?.score ?? 'N/A';
+    const weakTopics = context?.mcq?.weakAreas?.join(', ') || 'None';
+    const aptScore = context?.aptitude?.score ?? 'N/A';
+    const codingFeedback = context?.coding?.feedback ?? 'General performance recorded';
 
-Return ONLY valid JSON array:
+    const prompt = `Act as an AI Executive Recruiter and Technical Evaluator. Your objective is to conduct a dynamic HR Interview for a candidate based on their performance in 3 previous rounds (MCQ, Aptitude, Coding) and their uploaded Resume. You must behave like a human interviewer who tailors questions based on the candidate's specific background.
+
+[CANDIDATE CONTEXT]
+Resume Data: 
+- Skills: ${skills}
+- Experience: ${experience}
+
+Performance Data:
+- MCQ Result: ${mcqScore}% (Struggled with: ${weakTopics})
+- Aptitude Score: ${aptScore}%
+- Coding Evaluation: ${codingFeedback}
+
+[INTERVIEW EXECUTION RULES]
+1. The 'Gap' Analysis: If the candidate scored high in Coding but low in MCQ theory (or vice versa), ask a question to check if they understand the 'Why' behind their code vs their practical logic.
+2. Resume Validation: Pick a specific technology, project, or role from the resume data and ask: 'How did you specifically handle [Task X] using [Skill Y]?'
+3. Dynamic Hooking: Design questions that preemptively hook into common behavioral traits. Ask for a 'What If' scenario regarding a team conflict or project failure.
+4. Stress Test: Give one high-pressure situation tailored to their role (e.g., 'Imagine your server crashed during a live demo. What is your immediate 3-step action plan?').
+
+Generate exactly 6 to 8 questions incorporating the rules above.
+Return ONLY a valid JSON array:
 [
   {
     "id": "q1",
-    "question": "Tell me about yourself and your background.",
-    "type": "intro",
+    "question": "The question text tailored using the rules above",
+    "type": "intro | gap_analysis | resume_validation | dynamic_hooking | stress_test",
     "expectedDuration": 120,
-    "followUps": ["What are your key achievements?", "Why are you interested in this role?"],
-    "evaluationCriteria": "Communication, self-awareness, relevance"
+    "followUps": ["Contextual follow-up 1", "Contextual follow-up 2"],
+    "evaluationCriteria": "What to look for in the candidate's answer"
   }
 ]`;
 
@@ -516,20 +522,29 @@ Return ONLY valid JSON array:
     }
   }
 
-  async evaluateInterviewResponse(question: string, answer: string): Promise<any> {
-    const prompt = `Analyze this interview response and provide feedback. Return ONLY valid JSON.
+  async evaluateInterviewResponse(question: string, answer: string, context?: any): Promise<any> {
+    const prompt = `Act as an AI Executive Recruiter evaluating a candidate's real-time response.
+    
+Question Asked: ${question}
+Candidate's Answer: ${answer}
+(Cross-reference Context: ${JSON.stringify(context || {})})
 
-Question: ${question}
-Answer: ${answer}
+[EVALUATION CRITERIA]
+1. Technical Consistency: Does their verbal explanation match their coding round performance or general technical standards?
+2. Communication: Rate their clarity, confidence, and ability to stay on point.
+3. Problem Solving: How they approach the 'What If' scenarios.
+4. Actionable Advice: Identify exactly where they need to improve (e.g., 'Needs to work on Database Indexing concepts').
 
-Return JSON:
+Return ONLY valid JSON in this format:
 {
   "score": <0-10>,
-  "analysis": "detailed analysis paragraph",
-  "followUp": "relevant follow-up question",
+  "technicalConsistency": "assessment paragraph",
+  "communication": "assessment paragraph",
+  "problemSolving": "assessment paragraph",
+  "actionableAdvice": "specific actionable advice",
+  "followUp": "dynamic follow-up question based on their exact answer",
   "strengths": ["strength1", "strength2"],
-  "improvements": ["improvement1", "improvement2"],
-  "keywords": ["key concepts mentioned"]
+  "improvements": ["improvement1", "improvement2"]
 }`;
 
     try {
@@ -545,6 +560,51 @@ Return JSON:
     } catch (error) {
       console.error('Interview Response Evaluation Error:', error);
       throw new BadRequestException('Failed to evaluate interview response');
+    }
+  }
+
+  async generateFinalInterviewReport(interviewData: any, context: any): Promise<any> {
+    const prompt = `Act as an AI Executive Recruiter. The interview has ended. 
+    
+[CANDIDATE HISTORICAL DATA]
+- MCQ Score: ${context?.mcq?.score ?? 'N/A'}%
+- Aptitude Score: ${context?.aptitude?.score ?? 'N/A'}%
+- Coding Evaluation: ${context?.coding?.feedback ?? 'N/A'}
+- HR Interview Evaluations: ${JSON.stringify(interviewData)}
+
+[FINAL TASK]
+Generate a Comprehensive Performance Report in a structured JSON format suitable for final PDF generation.
+
+Output ONLY valid JSON matching this exact structure:
+{
+  "executiveSummary": "A concise overall fitment paragraph summarizing their profile.",
+  "roundWiseBreakdown": {
+    "mcq": "Highlighting struggles and strengths",
+    "aptitude": "Highlighting struggles and strengths",
+    "coding": "Highlighting struggles and strengths",
+    "hrInterview": "Highlighting struggles and strengths"
+  },
+  "criticalImprovementAreas": [
+    "Specific topic to study 1",
+    "Specific topic to study 2"
+  ],
+  "finalVerdict": "Hire | Develop | Reject",
+  "overallScore": <0-100>
+}`;
+
+    try {
+      const response: any = await this.openai.chat.completions.create({
+        model: 'openai/gpt-4o',
+        messages: [
+          { role: 'system', content: 'You are an Executive AI Recruiter. Return only valid JSON for the final report.' },
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: 'json_object' }
+      });
+      return JSON.parse(response.choices?.[0]?.message?.content || '{}');
+    } catch (error) {
+      console.error('Final Report Generation Error:', error);
+      throw new BadRequestException('Failed to generate final report');
     }
   }
 }

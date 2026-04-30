@@ -167,6 +167,40 @@ export default function StudentDashboard() {
   // Get user from DB — redirects to /auth if not logged in
   const { user } = useUser({ requireAuth: true, redirectIfNoAuth: true });
 
+  const handleRetakeAssessment = async () => {
+    try {
+      setLoading(true);
+      
+      const userStr = localStorage.getItem('user');
+      const cachedUser = userStr ? JSON.parse(userStr) : null;
+      const userId = cachedUser?.id || cachedUser?._id;
+
+      // 1. Reset specific exam completions for this user
+      if (userId) {
+        await authFetch('/exams/reset', { 
+          method: 'POST',
+          body: JSON.stringify({ userId })
+        });
+      }
+
+      // 2. Reset the global assessment progress flow
+      const res = await authFetch('/progress/reset', { method: 'POST' });
+      const data = await res.json();
+      if (data.newToken) {
+        localStorage.setItem('token', data.newToken);
+        document.cookie = `token=${data.newToken}; path=/; max-age=86400; SameSite=Lax`;
+        localStorage.removeItem('dashboard_stats');
+        localStorage.removeItem('dashboard_exams');
+        window.location.reload();
+      } else {
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error('Failed to reset progress:', error);
+      setLoading(false);
+    }
+  };
+
   const fetchData = async () => {
     try {
       // Read userId from localStorage cache (kept in sync by useUser/fetchUserFromDB)
@@ -194,7 +228,8 @@ export default function StudentDashboard() {
           ...statsData,
           totalXP: progressData.points || 0,
           solvedProblems: progressData.solvedProblems?.length || 0,
-          solvedChallenges: progressData.solvedChallenges?.length || 0
+          solvedChallenges: progressData.solvedChallenges?.length || 0,
+          currentStage: progressData.currentStage || 'MCQ'
         };
 
         // AGGRESSIVE DEDUPLICATION: Group by Title + Topic
@@ -287,6 +322,25 @@ export default function StudentDashboard() {
           />
         ) : (
           <>
+            {stats?.currentStage === 'FINISHED' && (
+              <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} 
+                className="bg-gradient-to-r from-indigo-900 to-purple-900 rounded-3xl p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl border border-indigo-500/20">
+                <div className="flex items-center gap-5 text-white">
+                  <div className="w-14 h-14 bg-white/10 rounded-2xl flex items-center justify-center shrink-0 border border-white/20">
+                    <Sparkles size={28} className="text-amber-400" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-black">Assessment Complete!</h2>
+                    <p className="text-indigo-200 mt-1">You have successfully finished all stages of the assessment. Ready to improve your score?</p>
+                  </div>
+                </div>
+                <button onClick={handleRetakeAssessment}
+                  className="px-8 py-4 bg-white hover:bg-indigo-50 text-indigo-900 rounded-2xl font-black shadow-lg transition-all flex items-center gap-2 hover:scale-105 shrink-0 whitespace-nowrap">
+                  Retake Full Assessment <RotateCcw size={20} />
+                </button>
+              </motion.div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
                 {loading ? (
                   [...Array(4)].map((_, i) => <SkeletonCard key={i} />)

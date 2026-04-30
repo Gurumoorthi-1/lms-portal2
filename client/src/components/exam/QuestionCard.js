@@ -227,12 +227,15 @@ const QuestionCard = ({ question, currentIdx, totalQuestions, selectedAnswer, on
           <div className="prose prose-slate max-w-none mb-10">
             <div className="text-2xl md:text-3xl font-bold text-[#0F172A] leading-snug">
               <ReactMarkdown components={markdownComponents}>
-                {[
-                  question.text,
-                  question.codeSnippet ? `\n\n\`\`\`${question.language || 'javascript'}\n${String(question.codeSnippet).replace(/\\n/g, '\n')}\n\`\`\`` : '',
-                  question.code ? `\n\n\`\`\`${question.language || 'javascript'}\n${String(question.code).replace(/\\n/g, '\n')}\n\`\`\`` : '',
-                  question.snippet ? `\n\n\`\`\`${question.language || 'javascript'}\n${String(question.snippet).replace(/\\n/g, '\n')}\n\`\`\`` : ''
-                ].filter(Boolean).join('\n')}
+                {(() => {
+                  const hasEmbeddedCode = /```[\s\S]*?```/.test(question.text || '');
+                  const extraCode = !hasEmbeddedCode ? (question.codeSnippet || question.code || question.snippet) : null;
+                  
+                  return [
+                    question.text,
+                    extraCode ? `\n\n\`\`\`${question.language || 'javascript'}\n${String(extraCode).replace(/\\n/g, '\n')}\n\`\`\`` : ''
+                  ].filter(Boolean).join('\n');
+                })()}
               </ReactMarkdown>
             </div>
 

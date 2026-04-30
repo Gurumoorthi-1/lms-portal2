@@ -10,6 +10,14 @@ export class ExamsController {
     return this.examsService.create(examData);
   }
 
+  @Post('reset')
+  async resetUserExams(@Body('userId') userId: string) {
+    if (!userId) {
+      return { success: false, message: 'User ID is required' };
+    }
+    return this.examsService.resetUserExams(userId);
+  }
+
   @Get('stats')
   getAnalytics(@Query('userId') userId: string) {
     return this.examsService.getAnalytics(userId);
