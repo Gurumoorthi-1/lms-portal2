@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useInterviewStore } from '@/hooks/useInterviewStore';
@@ -15,10 +15,13 @@ import { useEmotionAnalysis } from '@/hooks/useEmotionAnalysis';
 import ProctoringPanel from '@/components/exam/ProctoringPanel';
 import EmotionPanel from '@/components/exam/EmotionPanel';
 import EmotionReport from '@/components/exam/EmotionReport';
-import { ArrowLeft, ShieldAlert, Maximize2, Minimize2 } from 'lucide-react';
+import { 
+  ArrowLeft, ShieldAlert, Maximize2, Minimize2, 
+  Mic, MicOff, Send, User, Volume2, Loader2, 
+  StopCircle, Timer as TimerIcon, Activity, Sparkles, Star, Target
+} from 'lucide-react';
 
 const FaceDetection = dynamic(() => import('@/components/exam/FaceDetection'), { ssr: false });
-
 
 export default function InterviewPage() {
   const router = useRouter();
@@ -35,6 +38,7 @@ export default function InterviewPage() {
   const [showFollowUp, setShowFollowUp] = useState(false);
   const [showEmotionReport, setShowEmotionReport] = useState(false);
   const [emotionReport, setEmotionReport] = useState(null);
+  const chatEndRef = useRef(null);
   const textareaRef = useRef(null);
 
   // Security Orchestrator
@@ -49,11 +53,6 @@ export default function InterviewPage() {
   const [isFullScreen, setIsFullScreen] = useState(false);
   const isRequestingPermissionRef = useRef(false);
   const pageLoadTimeRef = useRef(Date.now());
-
-  const toggleFullScreen = useCallback(() => {
-    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
-    else document.exitFullscreen?.();
-  }, []);
 
   const { videoRef, cameraReady, permissionError, warnings, requestFullscreen } = useProctoring({
     sessionId: 'session-id', round: 'round3', enabled: true,
@@ -104,7 +103,6 @@ export default function InterviewPage() {
         const data = await res.json();
         setQuestions(data.questions || []);
         
-        // Start Unified Security Session
         startSecurity({ 
           sessionId: 'assessment-interview-session', 
           round: 'interview',
@@ -116,36 +114,43 @@ export default function InterviewPage() {
           if (data.questions?.[0]) speak(data.questions[0].question);
         }, 1500);
       } catch (err) {
-        alert('Failed to load questions: ' + err.message);
+        toast.error('Failed to load questions: ' + err.message);
       } finally {
         setLoading(false);
       }
     })();
-  }, [skills, resumeData, router, speak]);
+  }, [isHydrated, skills, resumeData, router, speak, startSecurity]);
 
-  const currentQ = questions[currentIdx];
-  const currentAnswer = answers[currentQ?.id] || '';
+  // Auto-trigger analysis if needed logic could be added here if desired, 
+  // but removing timer based auto-submission as requested.
 
   useEffect(() => {
     if (transcript && inputMode === 'voice') setTypedAnswer(transcript);
   }, [transcript, inputMode]);
+
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [answers, currentIdx, typedAnswer, analyzing]);
 
   const handleStartListening = () => {
     isRequestingPermissionRef.current = true;
     setTranscript('');
     setTypedAnswer('');
     startListening(t => setTypedAnswer(t));
-    // Reset after 5s assuming permission is dealt with
     setTimeout(() => { isRequestingPermissionRef.current = false; }, 5000);
   };
 
-  const handleStopListening = () => stopListening();
-
   const handleAnalyze = useCallback(async () => {
+    const currentQ = questions[currentIdx];
     const answerText = typedAnswer.trim();
     if (!answerText || !currentQ) return;
+    
     setAnalyzing(true);
     stopSpeaking();
+    stopListening();
+    
     try {
       const res = await fetch('http://localhost:5001/interview/evaluate', {
         method: 'POST',
@@ -153,21 +158,26 @@ export default function InterviewPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify({ question: currentQ.question, answer: answerText, evaluationCriteria: currentQ.evaluationCriteria })
+        body: JSON.stringify({ 
+          question: currentQ.question, 
+          answer: answerText, 
+          evaluationCriteria: currentQ.evaluationCriteria 
+        })
       });
       const data = await res.json();
       setAnswers(prev => ({ ...prev, [currentQ.id]: answerText }));
       setAnalyses(prev => ({ ...prev, [currentQ.id]: data }));
+      
       if (data.followUp) {
         setTimeout(() => speak(data.followUp), 500);
         setShowFollowUp(true);
       }
     } catch (err) {
-      alert('Analysis error: ' + err.message);
+      toast.error('Analysis error: ' + err.message);
     } finally {
       setAnalyzing(false);
     }
-  }, [typedAnswer, currentQ, stopSpeaking, speak]);
+  }, [typedAnswer, currentIdx, questions, stopSpeaking, stopListening, speak]);
 
   const handleNext = () => {
     setShowFollowUp(false);
@@ -184,6 +194,7 @@ export default function InterviewPage() {
 
   const handleComplete = async () => {
     stopSpeaking();
+    stopListening();
     const report = generateReport();
     if (report) {
       setEmotionReport(report);
@@ -196,7 +207,6 @@ export default function InterviewPage() {
   const doComplete = async () => {
     setCompleting(true);
     try {
-      // Call the finish endpoint to promote to FINISHED stage
       const res = await fetch('http://localhost:5001/interview/finish', {
         method: 'POST',
         headers: { 
@@ -220,22 +230,11 @@ export default function InterviewPage() {
       if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
       router.push('/student/analytics');
     } catch (err) {
-      alert('Error finalizing interview: ' + err.message);
+      toast.error('Error finalizing interview: ' + err.message);
     } finally {
       setCompleting(false);
     }
   };
-
-  const answeredCount = Object.keys(answers).length;
-  const currentAnalysis = analyses[currentQ?.id];
-  const isAnswered = !!answers[currentQ?.id];
-
-  // Auto-trigger fullscreen when loaded
-  useEffect(() => {
-    if (!loading && !document.fullscreenElement && document.documentElement.requestFullscreen) {
-      document.documentElement.requestFullscreen().catch(() => {});
-    }
-  }, [loading]);
 
   if (loading) return (
     <div className="min-h-screen bg-gray-50 py-10 px-4">
@@ -253,8 +252,12 @@ export default function InterviewPage() {
     </div>
   );
 
+  const currentQ = questions[currentIdx];
+  const currentAnalysis = analyses[currentQ?.id];
+  const isAnswered = !!answers[currentQ?.id];
+
   return (
-    <div className="min-h-screen bg-gray-50 select-none">
+    <div className="min-h-screen bg-slate-50/50 select-none font-sans overflow-hidden">
       <AnimatePresence>
         {showEmotionReport && emotionReport && (
           <EmotionReport
@@ -264,199 +267,238 @@ export default function InterviewPage() {
         )}
       </AnimatePresence>
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <div className="lg:col-span-3 space-y-5">
-            <div className="flex items-center justify-between bg-white rounded-2xl px-6 py-4 shadow-sm border border-gray-100">
-              <div className="flex items-center gap-4">
-                <button 
-                  onClick={() => router.push('/student')}
-                  className="p-2 rounded-xl hover:bg-gray-100 text-indigo-600 transition-all group"
-                  title="Back to Dashboard"
-                >
-                  <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
-                </button>
-                <div>
-                  <h1 className="text-xl font-black text-indigo-900">AI HR Interview</h1>
-                  <p className="text-sm text-gray-500">Question {currentIdx + 1} of {questions.length}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border"
-                  style={{ borderColor: emotionLabel?.color + '50', background: emotionLabel?.color + '10' }}>
-                  <span className="text-sm">{emotionLabel?.label?.split(' ')[1] || '😐'}</span>
-                  <span className="text-xs font-bold" style={{ color: emotionLabel?.color }}>{confidence}%</span>
-                </div>
-                <div className="flex gap-1">
-                  {questions.map((_, i) => (
-                    <div key={i} className="w-2.5 h-2.5 rounded-full transition-all"
-                      style={{ background: answers[questions[i]?.id] ? '#10b981' : i === currentIdx ? '#ff5722' : '#e5e7eb' }} />
-                  ))}
-                </div>
-                <span className="text-sm text-gray-500">{answeredCount}/{questions.length} answered</span>
-              </div>
-            </div>
-
-            {currentQ && (
-              <AnimatePresence mode="wait">
-                <motion.div key={currentQ.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -15 }}
-                  className="bg-white rounded-2xl p-8 shadow-sm border border-gray-100">
-                  
-                  <div className="flex items-center gap-2 mb-4">
-                    <span className="text-xs px-3 py-1 rounded-full font-semibold text-white"
-                      style={{ background: currentQ.type === 'intro' ? '#312e81' : currentQ.type === 'behavioral' ? '#f97316' : '#10b981' }}>
-                      {currentQ.type}
-                    </span>
-                    {isSpeaking && <span className="text-xs text-blue-500 flex items-center gap-1"><span className="animate-pulse">🔊</span> AI Speaking...</span>}
-                    {faceDetected && <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-gray-50 border border-gray-200 text-gray-600">{emotionLabel?.label || 'Neutral'}</span>}
-                  </div>
-
-                  <h2 className="text-xl font-bold text-gray-800 mb-2 leading-relaxed">{currentQ.question}</h2>
-                  <p className="text-xs text-gray-400 mb-6">Evaluation: {currentQ.evaluationCriteria}</p>
-
-                  <AnimatePresence>
-                    {showFollowUp && currentAnalysis?.followUp && (
-                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
-                        className="mb-4 p-4 rounded-xl border-l-4 bg-blue-50 border-blue-400">
-                        <p className="text-sm font-semibold text-blue-800 mb-1">🤖 AI Follow-up</p>
-                        <p className="text-sm text-blue-700">{currentAnalysis.followUp}</p>
-                        <button onClick={() => speak(currentAnalysis.followUp)} className="text-xs text-blue-500 mt-1 hover:underline">🔊 Hear again</button>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  {!isAnswered ? (
-                    <div className="space-y-4">
-                      <div className="flex gap-2 mb-4">
-                        {['voice', 'type'].map(mode => (
-                          <button key={mode} onClick={() => setInputMode(mode)}
-                            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all border ${
-                              inputMode === mode ? 'bg-indigo-900 text-white border-transparent' : 'bg-white border-gray-200 text-gray-600'
-                            }`}>
-                            {mode === 'voice' ? '🎤 Voice Input' : '⌨️ Type Answer'}
-                          </button>
-                        ))}
-                      </div>
-
-                      {inputMode === 'voice' && (
-                        <div className="flex flex-col items-center gap-4 py-6 border-2 border-dashed border-gray-200 rounded-xl">
-                          <motion.button onClick={isListening ? handleStopListening : handleStartListening}
-                            whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                            className={`w-20 h-20 rounded-full flex items-center justify-center text-3xl shadow-lg transition-all text-white ${
-                              isListening ? 'bg-red-500 animate-pulse' : 'bg-indigo-900'
-                            }`}>
-                            {isListening ? '⏹' : '🎤'}
-                          </motion.button>
-                          <p className="text-sm text-gray-500">{isListening ? '🔴 Listening...' : 'Tap to speak'}</p>
-                          {typedAnswer && (
-                            <div className="w-full p-3 bg-gray-50 rounded-xl text-sm text-gray-700 text-left max-h-32 overflow-y-auto">
-                              {typedAnswer}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {inputMode === 'type' && (
-                        <textarea ref={textareaRef} value={typedAnswer} onChange={e => setTypedAnswer(e.target.value)}
-                          placeholder="Type your answer here..."
-                          className="w-full h-40 p-4 border-2 border-gray-200 rounded-xl text-sm text-gray-700 resize-none focus:outline-none focus:border-blue-400 transition-all" />
-                      )}
-
-                      <div className="flex gap-3">
-                        <motion.button onClick={handleAnalyze} disabled={!typedAnswer.trim() || analyzing}
-                          whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                          className="flex-1 py-3 rounded-xl text-white font-bold disabled:opacity-40 transition-all bg-orange-500">
-                          {analyzing ? '🤖 Analyzing...' : '✓ Submit Answer'}
-                        </motion.button>
-                        <button onClick={() => speak(currentQ.question)} disabled={isSpeaking}
-                          className="px-4 py-3 rounded-xl border border-gray-200 text-gray-500 hover:border-gray-300 transition-all">
-                          🔊
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
-                        <p className="text-xs font-semibold text-gray-500 mb-2">YOUR ANSWER</p>
-                        <p className="text-sm text-gray-700 leading-relaxed">{currentAnswer}</p>
-                      </div>
-
-                      {currentAnalysis && (
-                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                          className="p-4 rounded-xl border border-gray-200 bg-blue-50/50">
-                          <div className="flex items-center justify-between mb-3">
-                            <p className="font-bold text-gray-800 text-sm">AI Analysis</p>
-                            <span className={`font-bold text-lg ${currentAnalysis.score >= 7 ? 'text-green-500' : currentAnalysis.score >= 5 ? 'text-yellow-500' : 'text-red-500'}`}>
-                              {currentAnalysis.score}/10
-                            </span>
-                          </div>
-                          <p className="text-sm text-gray-600 mb-3">{currentAnalysis.analysis}</p>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <p className="text-xs font-semibold text-green-700 mb-1">✓ Strengths</p>
-                              {(currentAnalysis.strengths || []).map((s, i) => <p key={i} className="text-xs text-green-600">• {s}</p>)}
-                            </div>
-                            <div>
-                              <p className="text-xs font-semibold text-orange-600 mb-1">↑ Improve</p>
-                              {(currentAnalysis.improvements || []).map((s, i) => <p key={i} className="text-xs text-orange-500">• {s}</p>)}
-                            </div>
-                          </div>
-                        </motion.div>
-                      )}
-
-                      <div className="flex gap-3">
-                        {currentIdx < questions.length - 1 ? (
-                          <motion.button onClick={handleNext} whileHover={{ scale: 1.02 }}
-                            className="flex-1 py-3 rounded-xl text-white font-bold bg-indigo-900">
-                            Next Question →
-                          </motion.button>
-                        ) : (
-                          <motion.button onClick={handleComplete} whileHover={{ scale: 1.02 }}
-                            className="flex-1 py-3 rounded-xl text-white font-bold bg-orange-500">
-                            Complete Interview 🎉
-                          </motion.button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </motion.div>
-              </AnimatePresence>
-            )}
-
-            <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-              <p className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-wide">Questions Overview</p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {questions.map((q, i) => (
-                  <div key={q.id} className={`p-3 rounded-xl text-xs border ${
-                    i === currentIdx ? 'border-orange-500 text-white bg-orange-500' :
-                    answers[q.id] ? 'bg-green-50 border-green-200 text-green-700' :
-                    'bg-gray-50 border-gray-200 text-gray-500'
-                  }`}>
-                    <div className="font-bold mb-1">Q{i + 1}</div>
-                    <div className="truncate">{q.type}</div>
-                    {answers[q.id] && <div className="text-green-600 font-bold mt-1">✓</div>}
-                  </div>
-                ))}
+      <div className="max-w-7xl mx-auto px-4 py-6 h-screen flex flex-col">
+        {/* Top Header */}
+        <div className="flex items-center justify-between bg-white rounded-3xl px-8 py-5 shadow-sm border border-slate-200/60 mb-6 shrink-0">
+          <div className="flex items-center gap-4">
+            <button onClick={() => router.push('/student')} className="p-3 rounded-2xl bg-slate-50 hover:bg-slate-100 text-indigo-600 transition-all group border border-slate-200/50">
+              <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
+            </button>
+            <div>
+              <h1 className="text-xl font-black text-slate-900 tracking-tight">AI Assessment Round</h1>
+              <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
+                <span className="flex items-center gap-1"><Target size={14} /> Stage 4: HR Interview</span>
+                <span className="w-1 h-1 bg-slate-300 rounded-full" />
+                <span>{currentIdx + 1} of {questions.length} Questions</span>
               </div>
             </div>
           </div>
+          
+          <div className="flex items-center gap-4">
+             <div className="flex items-center gap-1.5 px-4 py-2 rounded-2xl border bg-white border-slate-200 shadow-sm">
+                <span className="text-lg">{emotionLabel?.label?.split(' ')[1] || '😐'}</span>
+                <span className="text-sm font-black text-slate-700">{confidence}%</span>
+             </div>
+          </div>
+        </div>
 
-          <div className="space-y-4">
-            <ProctoringPanel 
-              videoRef={videoRef}
-              cameraReady={cameraReady} 
-              warnings={warnings} 
-              permissionError={permissionError} 
-            />
-            <EmotionPanel isLoaded={emotionLoaded} faceDetected={faceDetected} currentEmotion={currentEmotion} emotionLabel={emotionLabel}
-              confidence={confidence} nervousness={nervousness} emotionHistory={emotionHistory} />
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-6 overflow-hidden pb-6">
+          
+          {/* Side Info Panel */}
+          <div className="hidden lg:flex flex-col gap-6 overflow-y-auto pr-1 custom-scrollbar">
+            {/* AI Avatar Card */}
+            <div className="bg-slate-900 rounded-[2.5rem] p-6 shadow-2xl relative overflow-hidden flex flex-col items-center justify-center border border-white/10 aspect-square shrink-0">
+               <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/20 via-transparent to-slate-950 z-10" />
+               <motion.div 
+                  animate={{ 
+                    scale: analyzing ? [1, 1.05, 1] : [1, 1.02, 1],
+                    y: [0, -5, 0]
+                  }}
+                  transition={{ repeat: Infinity, duration: analyzing ? 2 : 5, ease: "easeInOut" }}
+                  className={`relative w-40 h-40 rounded-full mb-6 border-4 shadow-2xl overflow-hidden bg-slate-800 transition-colors duration-500 z-20 ${analyzing ? 'border-indigo-400 shadow-indigo-500/40' : 'border-slate-700/50 shadow-black/20'}`}
+                >
+                  <img src="/ai-avatar.png" alt="AI Specialist" className={`w-full h-full object-cover transition-all duration-1000 ${analyzing ? 'brightness-110 saturate-110 scale-110' : 'brightness-90 saturate-100'}`} />
+                  <AnimatePresence>
+                    {analyzing && (
+                      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-indigo-900/40 backdrop-blur-[2px] flex items-center justify-center">
+                        <div className="flex items-end space-x-1.5 h-6">
+                          {[0, 1, 2, 3].map((i) => (
+                            <motion.div key={i} animate={{ height: [8, 20, 8], backgroundColor: ['#818cf8', '#6366f1', '#818cf8'] }}
+                              transition={{ repeat: Infinity, duration: 0.6, delay: i * 0.1 }} className="w-1.5 rounded-full" />
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+               </motion.div>
+               <div className="relative z-20 text-center">
+                  <h3 className="text-lg font-bold text-white mb-1 tracking-tight">AI HR Specialist</h3>
+                  <div className="flex items-center justify-center space-x-2 bg-white/5 px-4 py-1 rounded-full backdrop-blur-md border border-white/10">
+                    <span className={`w-2 h-2 rounded-full ${analyzing ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`}></span>
+                    <span className="font-bold tracking-widest uppercase text-[10px] text-slate-400">
+                      {analyzing ? 'Analyzing' : 'Listening'}
+                    </span>
+                  </div>
+               </div>
+            </div>
 
-            {answeredCount >= Math.ceil(questions.length * 0.6) && (
-              <motion.button onClick={handleComplete} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                whileHover={{ scale: 1.02 }} className="w-full py-3 rounded-xl text-white font-bold text-sm bg-green-500">
-                ✓ Finish Interview
-              </motion.button>
-            )}
+            <ProctoringPanel videoRef={videoRef} cameraReady={cameraReady} warnings={warnings} permissionError={permissionError} />
+            
+            <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/60 flex flex-col shrink-0">
+               <h3 className="font-black text-slate-900 mb-4 flex items-center text-sm uppercase tracking-wider">
+                  <Activity size={16} className="mr-2 text-indigo-500" /> Recent Feedback
+               </h3>
+               <div className="flex-1 min-h-[100px]">
+                  {currentAnalysis ? (
+                    <div className="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100">
+                      <p className="text-slate-700 text-xs italic leading-relaxed font-medium">"{currentAnalysis.analysis?.split('.')[0] || 'Analyzing...'}..."</p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full opacity-30 text-center p-4">
+                      <Volume2 size={24} className="mb-2" />
+                      <p className="text-[10px] font-bold text-slate-500">Feedback will appear here.</p>
+                    </div>
+                  )}
+               </div>
+            </div>
+          </div>
+
+          {/* Main Interaction Area */}
+          <div className="lg:col-span-3 flex flex-col bg-white rounded-[2.5rem] shadow-xl border border-slate-200/60 overflow-hidden relative">
+            
+            {/* Messages Area */}
+            <div className="flex-1 overflow-y-auto p-8 space-y-10 bg-slate-50/30 custom-scrollbar">
+              <AnimatePresence>
+                {questions.slice(0, currentIdx + 1).map((q, idx) => (
+                  <motion.div key={q.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+                    {/* AI Message */}
+                    <div className="flex items-start max-w-[85%]">
+                      <div className="w-10 h-10 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center mr-4 shrink-0 mt-1 shadow-sm">
+                        <User size={20} />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="bg-white border border-slate-200 px-6 py-4 rounded-3xl rounded-tl-sm shadow-sm">
+                           <p className="text-slate-800 leading-relaxed font-semibold">{q.question}</p>
+                        </div>
+                        {idx === currentIdx && isSpeaking && (
+                          <span className="text-[10px] font-black text-indigo-500 flex items-center gap-1 ml-2 uppercase tracking-widest">
+                            <span className="animate-pulse">🔊</span> AI is Speaking
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Follow-up if exists */}
+                    {idx === currentIdx && showFollowUp && analyses[q.id]?.followUp && (
+                       <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="flex items-start max-w-[80%] ml-14">
+                          <div className="bg-amber-50 border border-amber-200 px-6 py-4 rounded-3xl rounded-tl-sm shadow-sm relative">
+                             <div className="absolute -left-2 top-4 w-4 h-4 bg-amber-50 border-l border-t border-amber-200 rotate-[-45deg]" />
+                             <p className="text-amber-900 leading-relaxed text-sm font-bold">🤖 {analyses[q.id].followUp}</p>
+                          </div>
+                       </motion.div>
+                    )}
+
+                    {/* User Answer */}
+                    {(answers[q.id] || (idx === currentIdx && typedAnswer)) && (
+                      <div className="flex items-start justify-end">
+                        <div className="bg-indigo-600 text-white px-6 py-4 rounded-3xl rounded-tr-sm shadow-lg max-w-[85%]">
+                           <p className="leading-relaxed font-medium">{answers[q.id] || typedAnswer}</p>
+                        </div>
+                        <div className="w-10 h-10 rounded-2xl bg-slate-200 text-slate-600 flex items-center justify-center ml-4 shrink-0 mt-1 shadow-sm font-black uppercase">
+                          {resumeData?.name?.charAt(0) || 'U'}
+                        </div>
+                      </div>
+                    )}
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+
+              {analyzing && (
+                <div className="flex items-start">
+                  <div className="w-10 h-10 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center mr-4 shrink-0 mt-1 shadow-sm">
+                    <Loader2 size={20} className="animate-spin" />
+                  </div>
+                  <div className="bg-white border border-slate-200 px-6 py-4 rounded-3xl rounded-tl-sm shadow-sm flex space-x-1.5 items-center">
+                    <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce" />
+                    <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                    <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
+                  </div>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+
+            {/* Bottom Controls */}
+            <div className="p-8 bg-white/80 backdrop-blur-md border-t border-slate-200/50">
+              <div className="flex flex-col md:flex-row items-center gap-4 max-w-5xl mx-auto">
+                
+                <div className="flex-1 w-full relative flex items-center gap-3">
+                  <button
+                    onClick={isListening ? stopListening : handleStartListening}
+                    disabled={(isAnswered && !showFollowUp) || analyzing}
+                    className={`flex-shrink-0 w-16 h-16 rounded-3xl flex items-center justify-center transition-all shadow-lg border-2 ${
+                      isListening 
+                        ? 'bg-rose-50 border-rose-500 text-rose-500 animate-pulse' 
+                        : 'bg-indigo-600 border-indigo-700/50 text-white hover:scale-105 hover:shadow-indigo-500/30 disabled:opacity-30'
+                    }`}
+                    title={isListening ? "Stop Recording" : "Start Recording"}
+                  >
+                    {isListening ? <StopCircle size={28} /> : <Mic size={28} />}
+                  </button>
+                  
+                  <div className="relative flex-1 group">
+                    <textarea
+                      ref={textareaRef}
+                      value={typedAnswer}
+                      onChange={(e) => {
+                        setTypedAnswer(e.target.value);
+                        e.target.style.height = 'auto';
+                        e.target.style.height = `${Math.min(e.target.scrollHeight, 150)}px`;
+                      }}
+                      onFocus={() => setInputMode('type')}
+                      disabled={(isAnswered && !showFollowUp) || analyzing}
+                      placeholder={isListening ? "Listening to your voice..." : "Type your answer or use the mic..."}
+                      rows={1}
+                      className="w-full min-h-[64px] max-h-[150px] bg-slate-100 rounded-[2rem] border-2 border-transparent px-8 py-5 outline-none focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-medium text-slate-700 disabled:opacity-50 resize-none overflow-y-auto custom-scrollbar"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleAnalyze();
+                        }
+                      }}
+                    />
+                    <div className="absolute right-6 bottom-4 flex items-center gap-2">
+                       <button onClick={() => speak(currentQ?.question)} className="p-2 text-slate-400 hover:text-indigo-600 transition-colors">
+                          <Volume2 size={20} />
+                       </button>
+                    </div>
+                  </div>
+                </div>
+                
+                {isAnswered && !showFollowUp ? (
+                   <button
+                      onClick={currentIdx < questions.length - 1 ? handleNext : handleComplete}
+                      className="w-full md:w-auto bg-slate-900 hover:bg-black text-white px-10 h-16 rounded-3xl font-black transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 flex items-center justify-center gap-3 group"
+                    >
+                      {currentIdx < questions.length - 1 ? 'Next Question' : 'Finish Interview'}
+                      <ArrowLeft size={20} className="rotate-180 group-hover:translate-x-1 transition-transform" />
+                    </button>
+                ) : (
+                  <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+                    {showFollowUp && (
+                      <button
+                        onClick={currentIdx < questions.length - 1 ? handleNext : handleComplete}
+                        className="w-full sm:w-auto bg-slate-100 hover:bg-slate-200 text-slate-600 px-8 h-16 rounded-3xl font-bold transition-all flex items-center justify-center gap-2 border border-slate-200"
+                      >
+                        Skip Elaboration
+                      </button>
+                    )}
+                    <button
+                      onClick={handleAnalyze}
+                      disabled={!typedAnswer.trim() || analyzing}
+                      className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white px-10 h-16 rounded-3xl font-black transition-all shadow-xl hover:shadow-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+                    >
+                      {analyzing ? <Loader2 className="animate-spin" /> : <Send size={20} />}
+                      {currentIdx === questions.length - 1 && !typedAnswer.trim() ? (
+                        'Finish Interview'
+                      ) : (
+                        'Submit Answer'
+                      )}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
