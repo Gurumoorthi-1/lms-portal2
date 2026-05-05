@@ -1,18 +1,19 @@
 // src/hooks/useEmotionAnalysis.js
 // Feature 3: Real-time face + emotion detection using @vladmandic/face-api
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { Smile, Meh, Zap, Frown, Angry, CloudLightning, Ghost } from 'lucide-react';
 
 const MODELS_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model';
 
 // Emotion → readable label + confidence mapping
 const EMOTION_LABELS = {
-  happy: { label: 'Happy 😊', color: '#10b981' },
-  neutral: { label: 'Neutral 😐', color: '#6b7280' },
-  surprised: { label: 'Surprised 😮', color: '#f59e0b' },
-  sad: { label: 'Sad 😢', color: '#3b82f6' },
-  angry: { label: 'Angry 😠', color: '#ef4444' },
-  fearful: { label: 'Nervous 😰', color: '#8b5cf6' },
-  disgusted: { label: 'Disgusted 😒', color: '#dc2626' },
+  happy: { label: 'Happy', color: '#10b981', Icon: Smile },
+  neutral: { label: 'Neutral', color: '#6b7280', Icon: Meh },
+  surprised: { label: 'Surprised', color: '#f59e0b', Icon: Zap },
+  sad: { label: 'Sad', color: '#3b82f6', Icon: Frown },
+  angry: { label: 'Angry', color: '#ef4444', Icon: Angry },
+  fearful: { label: 'Nervous', color: '#8b5cf6', Icon: CloudLightning },
+  disgusted: { label: 'Disgusted', color: '#dc2626', Icon: Ghost },
 };
 
 // How confident we infer from expressions

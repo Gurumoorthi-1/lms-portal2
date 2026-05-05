@@ -181,13 +181,23 @@ export default function ExamPlayer() {
     if (isFullScreenExit) {
       setFsViolations(prev => {
         const newCount = prev + 1;
-        toast.error(`Security Alert: ${reason}. Final warning!`, { id: 'security_alert', duration: 5000, icon: '⚠️', style: { border: '2px solid #ef4444', background: '#0f172a', color: '#fff' } });
+        toast.error(`Security Alert: ${reason}. Final warning!`, { 
+          id: 'security_alert', 
+          duration: 5000, 
+          icon: <ShieldAlert size={20} className="text-red-500" />, 
+          style: { border: '2px solid #ef4444', background: '#0f172a', color: '#fff' } 
+        });
         return newCount;
       });
     } else {
       setTotalViolations(prev => {
         const newCount = prev + 1;
-        toast.error(`Security Alert: ${reason}. Violation ${newCount}/5`, { id: 'security_alert', duration: 5000, icon: '🛡️', style: { border: '2px solid #ef4444', background: '#0f172a', color: '#fff' } });
+        toast.error(`Security Alert: ${reason}. Violation ${newCount}/5`, { 
+          id: 'security_alert', 
+          duration: 5000, 
+          icon: <Shield size={20} className="text-red-500" />, 
+          style: { border: '2px solid #ef4444', background: '#0f172a', color: '#fff' } 
+        });
         return newCount;
       });
     }
@@ -249,7 +259,7 @@ export default function ExamPlayer() {
     try {
       if (document.documentElement.requestFullscreen) { await document.documentElement.requestFullscreen(); setIsFullScreen(true); }
       setIsStarted(true);
-      toast.success("AI Proctoring System: ONLINE");
+      toast.success("Security System: ONLINE");
     } catch (err) { setIsStarted(true); }
   };
 
@@ -269,16 +279,18 @@ export default function ExamPlayer() {
             <Shield size={40} />
           </div>
           <div className="space-y-2">
-            <h1 className="text-3xl font-black text-white tracking-tight">AI Proctoring Gate</h1>
-            <p className="text-slate-400 font-medium text-sm px-6">Identity verification and environment check is mandatory. Maintain focus on the screen.</p>
+            <h1 className="text-3xl font-black text-white tracking-tight">Assessment Security</h1>
+            <p className="text-slate-400 font-medium text-sm px-6">Fullscreen enforcement and violation tracking is active. Maintain focus on the exam.</p>
           </div>
 
-          <FaceDetection mode="gate" onVerificationComplete={setFaceVerified} />
+          <div className="hidden">
+             <FaceDetection mode="gate" enabled={false} onVerificationComplete={setFaceVerified} />
+          </div>
 
           <div className="grid grid-cols-2 gap-4 text-left">
              <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
-                <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">AI Proctor</div>
-                <div className={`text-sm font-bold ${faceVerified ? 'text-emerald-400' : 'text-amber-500'}`}>{faceVerified ? 'Secure Environment' : 'System Booting...'}</div>
+                <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Security Status</div>
+                <div className="text-sm font-bold text-emerald-400">System Ready</div>
              </div>
              <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
                 <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Limit</div>
@@ -288,12 +300,9 @@ export default function ExamPlayer() {
 
           <button 
             onClick={startExamFlow}
-            disabled={!faceVerified}
-            className={`w-full h-16 rounded-[24px] font-black text-lg shadow-xl flex items-center justify-center gap-3 transition-all ${
-              faceVerified ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/40' : 'bg-white/5 text-slate-600 cursor-not-allowed'
-            }`}
+            className="w-full h-16 rounded-[24px] font-black text-lg shadow-xl flex items-center justify-center gap-3 transition-all bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/40"
           >
-            Start Proctored Exam <PlayCircle size={24} />
+            Start Assessment <PlayCircle size={24} />
           </button>
         </motion.div>
       </div>
@@ -307,7 +316,9 @@ export default function ExamPlayer() {
 
   return (
     <div className="h-screen bg-[#F8FAFC] flex flex-col overflow-hidden select-none">
-      <FaceDetection mode="floating" onViolation={handleViolation} />
+      <div className="hidden">
+        <FaceDetection mode="floating" enabled={false} onViolation={handleViolation} />
+      </div>
       <header className="h-16 bg-white border-b border-[#E2E8F0] flex items-center justify-between px-6 shrink-0">
         <div className="flex items-center gap-4">
           <button onClick={() => router.push('/student')} className="flex items-center gap-2 text-[#64748B] hover:text-[#0F172A] font-bold text-sm"><X size={20} /> Exit</button>

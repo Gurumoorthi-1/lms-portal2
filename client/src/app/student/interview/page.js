@@ -286,8 +286,11 @@ export default function InterviewPage() {
           
           <div className="flex items-center gap-4">
              <div className="flex items-center gap-1.5 px-4 py-2 rounded-2xl border bg-white border-slate-200 shadow-sm">
-                <span className="text-lg">{emotionLabel?.label?.split(' ')[1] || '😐'}</span>
-                <span className="text-sm font-black text-slate-700">{confidence}%</span>
+                <span className="flex items-center gap-1">
+                  {emotionLabel?.Icon && <emotionLabel.Icon size={18} style={{ color: emotionLabel.color }} />}
+                  <span className="text-sm font-black text-slate-700 ml-1">{emotionLabel?.label || 'Neutral'}</span>
+                </span>
+                <span className="text-sm font-black text-slate-700 border-l pl-2 ml-1 border-slate-200">{confidence}%</span>
              </div>
           </div>
         </div>

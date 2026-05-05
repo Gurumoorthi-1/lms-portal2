@@ -3,10 +3,12 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 
+import { TrendingUp, TrendingDown, MoveRight, Brain, Zap, Activity, BarChart, Lightbulb } from 'lucide-react';
+
 const TREND_CONFIG = {
-  improving: { icon: '📈', color: '#10b981', text: 'Nervousness decreased as interview progressed — great adaptation!' },
-  worsening:  { icon: '📉', color: '#ef4444', text: 'Stress increased toward end — practice longer mock sessions.' },
-  stable:     { icon: '➡️', color: '#6b7280', text: 'Consistent composure throughout the interview.' },
+  improving: { icon: TrendingUp, color: '#10b981', text: 'Nervousness decreased as interview progressed — great adaptation!' },
+  worsening:  { icon: TrendingDown, color: '#ef4444', text: 'Stress increased toward end — practice longer mock sessions.' },
+  stable:     { icon: MoveRight, color: '#6b7280', text: 'Consistent composure throughout the interview.' },
 };
 
 export default function EmotionReport({ report, onClose }) {
@@ -28,10 +30,9 @@ export default function EmotionReport({ report, onClose }) {
         onClick={e => e.stopPropagation()}
         className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden"
       >
-        {/* Header */}
         <div className="px-6 py-5 text-white" style={{ background: 'linear-gradient(135deg, #0a0a5c, #ff5722)' }}>
-          <h2 className="text-xl font-black mb-1" style={{ fontFamily: 'Syne, sans-serif' }}>
-            🧠 Emotion Analysis Report
+          <h2 className="text-xl font-black mb-1 flex items-center gap-2" style={{ fontFamily: 'Syne, sans-serif' }}>
+            <Brain size={24} /> Emotion Analysis Report
           </h2>
           <p className="text-sm opacity-80">AI HR Interview — Behavioral Assessment</p>
         </div>
@@ -40,14 +41,14 @@ export default function EmotionReport({ report, onClose }) {
           {/* Score cards */}
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: 'Overall Confidence', value: `${report.avgConf}%`, color: '#10b981', icon: '💪' },
-              { label: 'Avg Nervousness',   value: `${report.avgNerv}%`, color: '#f59e0b', icon: '😰' },
-              { label: 'Data Points',       value: report.totalSamples,  color: '#3b82f6', icon: '📊' },
-            ].map(({ label, value, color, icon }) => (
-              <div key={label} className="text-center p-3 rounded-xl bg-gray-50 border border-gray-100">
-                <div className="text-xl mb-1">{icon}</div>
+              { label: 'Overall Confidence', value: `${report.avgConf}%`, color: '#10b981', Icon: Zap },
+              { label: 'Avg Nervousness',   value: `${report.avgNerv}%`, color: '#f59e0b', Icon: Activity },
+              { label: 'Data Points',       value: report.totalSamples,  color: '#3b82f6', Icon: BarChart },
+            ].map(({ label, value, color, Icon }) => (
+              <div key={label} className="text-center p-3 rounded-xl bg-gray-50 border border-gray-100 flex flex-col items-center">
+                <div className="mb-1 text-slate-400"><Icon size={20} /></div>
                 <div className="text-lg font-black" style={{ color }}>{value}</div>
-                <div className="text-xs text-gray-500">{label}</div>
+                <div className="text-[10px] text-gray-500 uppercase font-black leading-tight mt-1">{label}</div>
               </div>
             ))}
           </div>
@@ -61,7 +62,7 @@ export default function EmotionReport({ report, onClose }) {
           {/* Nervousness trend */}
           <div className="p-4 rounded-xl border" style={{ borderColor: trendCfg.color + '40', background: trendCfg.color + '08' }}>
             <div className="flex items-center gap-2 mb-1">
-              <span>{trendCfg.icon}</span>
+              <trendCfg.icon size={18} style={{ color: trendCfg.color }} />
               <span className="text-sm font-bold capitalize" style={{ color: trendCfg.color }}>
                 Nervousness Trend: {report.nervTrend}
               </span>
@@ -71,8 +72,8 @@ export default function EmotionReport({ report, onClose }) {
 
           {/* Suggestions */}
           <div>
-            <p className="text-sm font-bold text-gray-800 mb-3" style={{ fontFamily: 'Syne, sans-serif' }}>
-              💡 Suggestions for Improvement
+            <p className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2" style={{ fontFamily: 'Syne, sans-serif' }}>
+              <Lightbulb size={18} className="text-amber-500" /> Suggestions for Improvement
             </p>
             <div className="space-y-2">
               {(report.suggestions || []).map((s, i) => (

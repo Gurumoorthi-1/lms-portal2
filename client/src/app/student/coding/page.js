@@ -30,6 +30,7 @@ export default function CodingPage() {
   const [runResults, setRunResults] = useState(null);
   const [submissions, setSubmissions] = useState({});
   const [loading, setLoading] = useState(true);
+  const [showGate, setShowGate] = useState(true);
 
   // Security Orchestrator
   const { 
@@ -41,6 +42,8 @@ export default function CodingPage() {
   } = useSecurity();
 
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [tabSwitchTimer, setTabSwitchTimer] = useState(null);
+  const [awayTime, setAwayTime] = useState(0);
   const pageLoadTimeRef = useRef(Date.now());
 
   // Handle specialized AI violations from components
@@ -115,7 +118,7 @@ export default function CodingPage() {
           startSecurity({ 
             sessionId: 'assessment-coding-session', 
             round: 'coding',
-            maxViolations: 5,
+            maxViolations: 3,
             maxCritical: 2
           });
 
@@ -219,6 +222,46 @@ export default function CodingPage() {
     window.location.href = '/student/interview';
   };
 
+  // ── Tab Switch Termination Logic (15s) ──
+  useEffect(() => {
+    if (showGate || isDisqualified || loading) return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' || !document.hasFocus()) {
+        if (tabSwitchTimer) return; // Already tracking
+
+        const start = Date.now();
+        const timer = setInterval(() => {
+          const elapsed = Math.floor((Date.now() - start) / 1000);
+          setAwayTime(elapsed);
+          if (elapsed >= 15) {
+            clearInterval(timer);
+            // DIRECT TERMINATION: Bypasses violation counts
+            reportViolation('tab_switch_timeout', 'Session terminated: Left assessment for > 15 seconds.', 'critical');
+          }
+        }, 1000);
+        setTabSwitchTimer(timer);
+      } else {
+        if (tabSwitchTimer) {
+          clearInterval(tabSwitchTimer);
+          setTabSwitchTimer(null);
+          setAwayTime(0);
+        }
+      }
+    };
+
+    window.addEventListener('blur', handleVisibilityChange);
+    window.addEventListener('focus', handleVisibilityChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      window.removeEventListener('blur', handleVisibilityChange);
+      window.removeEventListener('focus', handleVisibilityChange);
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      if (tabSwitchTimer) clearInterval(tabSwitchTimer);
+    };
+  }, [showGate, isDisqualified, loading, tabSwitchTimer, reportViolation]);
+
   const solvedCount = Object.values(submissions).filter(s => s.passed).length;
 
   useEffect(() => {
@@ -227,8 +270,22 @@ export default function CodingPage() {
         document.documentElement.requestFullscreen().catch(() => {});
       }
     };
-    if (!loading) triggerFS();
+    // Removed direct loading effect to use Gate instead
   }, [loading]);
+
+  const enterProctoredSession = async () => {
+    try {
+      if (document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+        setIsFullScreen(true);
+      }
+      setShowGate(false);
+      toast.success("AI Security System: ONLINE");
+    } catch (err) {
+      setShowGate(false); // Fallback if FS fails
+    }
+  };
+
   if (loading) return (
     <div className="h-screen flex flex-col bg-gray-900 text-white overflow-hidden">
       <div className="bg-gray-800 h-14 border-b border-gray-700 px-4 flex items-center gap-3 shrink-0">
@@ -249,6 +306,42 @@ export default function CodingPage() {
       </div>
     </div>
   );
+
+  if (showGate) {
+    return (
+      <div className="h-screen bg-[#0F172A] flex items-center justify-center p-6 select-none">
+        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="max-w-xl w-full bg-white/5 border border-white/10 rounded-[40px] p-10 backdrop-blur-xl text-center space-y-8">
+          <div className="w-20 h-20 bg-orange-500/10 text-orange-400 rounded-3xl flex items-center justify-center mx-auto border border-orange-500/20">
+            <Maximize2 size={40} />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-3xl font-black text-white tracking-tight">Coding Assessment Gate</h1>
+            <p className="text-slate-400 font-medium text-sm px-6">Entering the proctored coding environment requires full-screen mode for security and violation tracking.</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 text-left">
+             <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
+                <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Security Status</div>
+                <div className="text-sm font-bold text-emerald-400">System Ready</div>
+             </div>
+             <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
+                <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Constraint</div>
+                <div className="text-sm font-bold text-white">Full-Screen Required</div>
+             </div>
+          </div>
+
+          <button 
+            onClick={enterProctoredSession}
+            className="w-full h-16 rounded-[24px] font-black text-lg shadow-xl flex items-center justify-center gap-3 transition-all bg-orange-600 hover:bg-orange-500 text-white shadow-orange-900/40"
+          >
+            Enter Proctored Session <ArrowLeft size={24} className="rotate-180" />
+          </button>
+          
+          <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Clicking will trigger Full-Screen Mode</p>
+        </motion.div>
+      </div>
+    );
+  }
   return (
     <div className="h-screen flex flex-col bg-gray-900 text-white select-none overflow-hidden">
       {!isDisqualified && <FaceDetection mode="floating" onViolation={handleAIViolation} />}
@@ -287,7 +380,13 @@ export default function CodingPage() {
                 <span className="text-gray-400 uppercase tracking-tighter whitespace-nowrap">AI Status</span>
              </div>
              <div className="w-px h-3 bg-gray-700" />
-             <div className="text-gray-400 uppercase tracking-tighter whitespace-nowrap">Violations: <span className={totalViolations > 0 ? 'text-red-500' : ''}>{totalViolations}/5</span></div>
+             <div className="text-gray-400 uppercase tracking-tighter whitespace-nowrap">Violations: <span className={totalViolations > 0 ? 'text-red-500' : ''}>{totalViolations}/3</span></div>
+             {awayTime > 0 && (
+               <>
+                 <div className="w-px h-3 bg-gray-700" />
+                 <div className="text-rose-500 font-black uppercase tracking-tighter animate-pulse">TERMINATING IN: {15 - awayTime}s</div>
+               </>
+             )}
           </div>
 
           <button onClick={toggleFullScreen} suppressHydrationWarning className="p-1.5 text-gray-400 hover:bg-gray-700 rounded-lg transition-colors">

@@ -60,7 +60,8 @@ export const SecurityProvider = ({ children }) => {
       };
 
       // Check disqualification within the state update to be precise
-      if (newCounts.total >= config.maxViolations || newCounts.fs >= config.maxCritical) {
+      // NEW: Immediate termination for tab_switch_timeout or reaching max violations
+      if (type === 'tab_switch_timeout' || newCounts.total >= config.maxViolations || newCounts.fs >= config.maxCritical) {
         setIsDisqualified(true);
       }
 

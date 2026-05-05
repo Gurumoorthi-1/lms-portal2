@@ -12,6 +12,7 @@ const FaceDetection = ({
   onVerificationComplete, 
   onViolation, 
   isActive = true,
+  enabled = true,
   videoRef: externalVideoRef
 }) => {
   const internalVideoRef = useRef(null);
@@ -67,7 +68,7 @@ const FaceDetection = ({
     let stream = null;
 
     const startVideo = async () => {
-      if (!modelLoaded || !isActive || isCameraActive) return;
+      if (!enabled || !modelLoaded || !isActive || isCameraActive) return;
       try {
         stream = await navigator.mediaDevices.getUserMedia({ 
           video: { width: 320, height: 240, frameRate: { ideal: 10 } } 
@@ -89,7 +90,7 @@ const FaceDetection = ({
         setIsCameraActive(false);
       }
     };
-  }, [modelLoaded, isActive]); // Only restart if models load or component active state changes
+  }, [modelLoaded, isActive, enabled]); // Only restart if models load, component active state, or enabled state changes
 
   // 3. Main Proctoring Engine
   const runProctoring = useCallback(async () => {
