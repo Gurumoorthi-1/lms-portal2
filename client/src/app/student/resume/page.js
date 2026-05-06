@@ -4,9 +4,9 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useInterviewStore } from '@/hooks/useInterviewStore';
 import Skeleton from '@/components/ui/Skeleton';
+import { authFetch, BASE_URL } from '@/lib/api';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-
 
 export default function ResumePage() {
   const router = useRouter();
@@ -48,7 +48,7 @@ export default function ResumePage() {
       const formData = new FormData();
       formData.append('file', file);
       
-      const res = await fetch('http://localhost:5001/resume/upload', {
+      const res = await fetch(`${BASE_URL}/resume/upload`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -76,14 +76,8 @@ export default function ResumePage() {
 
   const handleProceed = async () => {
     try {
-      // Force promotion to ensure token is synced even if resume was loaded from cache.
-      // Pass fromStage to prevent double-promotion if already promoted.
-      const res = await fetch('http://localhost:5001/progress/next-stage', {
+      const res = await authFetch('/progress/next-stage', {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}` 
-        },
         body: JSON.stringify({ fromStage: 'RESUME_UPLOAD' })
       });
       const data = await res.json();

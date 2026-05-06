@@ -21,6 +21,8 @@ import {
   StopCircle, Timer as TimerIcon, Activity, Sparkles, Star, Target
 } from 'lucide-react';
 
+import { authFetch, BASE_URL } from '@/lib/api';
+
 const FaceDetection = dynamic(() => import('@/components/exam/FaceDetection'), { ssr: false });
 
 export default function InterviewPage() {
@@ -92,7 +94,7 @@ export default function InterviewPage() {
           experience: resumeData?.experience?.join('; ') || '',
           resumeText: resumeData?.summary || ''
         };
-        const res = await fetch('http://localhost:5001/interview/generate', {
+        const res = await fetch(`${BASE_URL}/interview/generate`, {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
@@ -152,7 +154,7 @@ export default function InterviewPage() {
     stopListening();
     
     try {
-      const res = await fetch('http://localhost:5001/interview/evaluate', {
+      const res = await fetch(`${BASE_URL}/interview/evaluate`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -207,7 +209,7 @@ export default function InterviewPage() {
   const doComplete = async () => {
     setCompleting(true);
     try {
-      const res = await fetch('http://localhost:5001/interview/finish', {
+      const res = await fetch(`${BASE_URL}/interview/finish`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',

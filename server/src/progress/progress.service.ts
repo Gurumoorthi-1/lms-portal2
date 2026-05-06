@@ -139,7 +139,19 @@ export class ProgressService {
       const newToken = await this.authService.generateTokenFromUser(userId, nextStage);
 
       // Institutional Feature: Generate report for the stage just finished
-      this.generateInstitutionalReport(userId, progress.currentStage).catch(e => console.error('BG Report Gen Error:', e));
+      // Map enum to camelCase report key
+      const reportKeyMap = {
+        'MCQ': 'mcq',
+        'RESUME_UPLOAD': 'resume',
+        'APTITUDE': 'aptitude',
+        'CODING': 'coding',
+        'HR_INTERVIEW': 'hrInterview'
+      };
+      
+      const finishedStageKey = reportKeyMap[progress.currentStage === nextStage ? stages[currentIndex] : progress.currentStage];
+      if (finishedStageKey) {
+        this.generateInstitutionalReport(userId, finishedStageKey).catch(e => console.error('BG Report Gen Error:', e));
+      }
 
       return { progress, newToken };
     }
@@ -184,7 +196,7 @@ export class ProgressService {
       });
 
       // Institutional Feature: Generate report for MCQ
-      this.generateInstitutionalReport(userId, 'MCQ').catch(e => console.error('BG Report Gen Error:', e));
+      this.generateInstitutionalReport(userId, 'mcq').catch(e => console.error('BG Report Gen Error:', e));
 
       const result = await this.moveToNextStage(userId, AssessmentStage.MCQ);
       return {
@@ -210,7 +222,8 @@ export class ProgressService {
         $set: { 
           currentStage: AssessmentStage.MCQ, 
           status: ProgressStatus.ACTIVE,
-          context: {} // Clear previous run context to allow fresh evaluation
+          context: {}, // Clear previous run context to allow fresh evaluation
+          reports: {} // FULL RESET: Clear institutional reports
         } 
       },
       { new: true }
@@ -230,34 +243,76 @@ export class ProgressService {
 
     const progress = await this.getUserProgress(userId);
     const context = progress.context || {};
-    
-    // Use AI to generate a professional performance report based on the stage data
-    const prompt = `Act as an AI Academic Counselor. Generate a performance report for a student who just finished the ${stage} round.
-    Data: ${JSON.stringify(context[stage.toLowerCase()] || {})}
-    
-    Return ONLY valid JSON:
-    {
-      "performance": "Summary of how they did",
-      "strengths": ["list of strengths"],
-      "weaknesses": ["where they lag"],
-      "improvementTips": ["how to improve"],
-      "score": 85,
-      "generatedAt": "${new Date().toISOString()}"
-    }`;
 
     try {
-      // Accessing OpenAI via aiService's private openai instance or adding a helper
+      const dataToAnalyze = context[stage === 'hrInterview' ? 'interview' : stage] || {};
+      
+      // Extract the REAL score from context data — never let AI hallucinate it
+      let realScore: number | null = null;
+      let realStatus: string = 'PENDING';
+      
+      if (stage === 'coding') {
+        const codingData = context['coding'] || {};
+        realScore = codingData.scorePercent ?? (codingData.passed ? 100 : 0);
+        realStatus = codingData.passed ? 'PASSED' : 'FAILED';
+      } else if (stage === 'mcq') {
+        realScore = context['mcq']?.score ?? null;
+        realStatus = context['mcq']?.status || (realScore !== null && realScore >= 50 ? 'PASSED' : 'FAILED');
+      } else if (stage === 'aptitude') {
+        realScore = context['aptitude']?.score ?? null;
+        realStatus = context['aptitude']?.status || (realScore !== null && realScore >= 50 ? 'PASSED' : 'FAILED');
+      } else if (stage === 'hrInterview') {
+        const interviewData = context['interview'] || {};
+        // Use percentScore (0-100) for consistent reporting; fall back to calculating from totalScore/maxScore
+        if (interviewData.percentScore != null) {
+          realScore = interviewData.percentScore;
+        } else if (interviewData.totalScore != null && interviewData.maxScore) {
+          realScore = Math.round((interviewData.totalScore / interviewData.maxScore) * 100);
+        } else {
+          realScore = 0;
+        }
+        realStatus = interviewData.status === 'completed' ? 'COMPLETED' : 'PENDING';
+      }
+      
+      // Accessing OpenAI via aiService
       const report = await (this.aiService as any).openai.chat.completions.create({
         model: 'openai/gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
+        messages: [{ 
+          role: 'user', 
+          content: `Act as an AI Academic Counselor. Generate a professional performance report for a student who just finished the ${stage} round.
+          
+          Student Data: ${JSON.stringify(dataToAnalyze)}
+          Actual Score: ${realScore !== null ? realScore + '%' : 'Not available'}
+          Actual Status: ${realStatus}
+          
+          CRITICAL RULES:
+          1. The "score" field in your response MUST be exactly ${realScore !== null ? realScore : 0}. Do NOT make up a different score.
+          2. The "status" field MUST be exactly "${realStatus}".
+          3. Base your performance summary, strengths, and weaknesses on the actual Student Data provided.
+          
+          Return ONLY valid JSON:
+          {
+            "performance": "Summary based on the actual data above",
+            "strengths": ["list of 3 strengths based on data"],
+            "weaknesses": ["list of 2 weaknesses based on data"],
+            "improvementTips": ["actionable tips to improve"],
+            "score": ${realScore !== null ? realScore : 0},
+            "status": "${realStatus}",
+            "generatedAt": "${new Date().toISOString()}"
+          }` 
+        }],
         response_format: { type: 'json_object' }
       });
 
       const parsedReport = JSON.parse(report.choices[0].message.content);
       
+      // Force the real score/status in case AI still hallucinated
+      if (realScore !== null) parsedReport.score = realScore;
+      parsedReport.status = realStatus;
+      
       await this.progressModel.findOneAndUpdate(
         { user: new Types.ObjectId(userId) },
-        { $set: { [`reports.${stage.toLowerCase()}`]: parsedReport } }
+        { $set: { [`reports.${stage}`]: parsedReport } }
       );
 
       return parsedReport;

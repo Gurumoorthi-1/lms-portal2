@@ -45,12 +45,21 @@ export class ChallengesController {
   async evaluateAiChallenge(@Request() req: any, @Body() body: { problem: any, language: string, code: string }) {
     const evaluation = await this.aiService.evaluateCodeSubmission(body.problem, body.language, body.code);
     
-    // Save results to user progress context
+    // Save FULL evaluation results to user progress context for accurate institutional reporting
+    const passedCount = evaluation.passedCount || 0;
+    const totalCount = evaluation.totalCount || 1;
+    const codingScorePercent = Math.round((passedCount / totalCount) * 100);
+    
     await this.progressService.updateContext(req.user.userId, 'coding', {
-      problemId: body.problem.id,
+      problemTitle: body.problem.title || body.problem.id,
       passed: evaluation.passed,
-      score: evaluation.passedCount,
-      timeComplexity: evaluation.timeComplexity,
+      passedCount: passedCount,
+      totalCount: totalCount,
+      scorePercent: codingScorePercent,
+      timeComplexity: evaluation.timeComplexity || 'N/A',
+      spaceComplexity: evaluation.spaceComplexity || 'N/A',
+      feedback: evaluation.feedback || 'No feedback available',
+      status: evaluation.passed ? 'PASSED' : 'FAILED',
       completedAt: new Date()
     });
 

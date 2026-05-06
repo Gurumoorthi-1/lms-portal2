@@ -10,6 +10,8 @@ import { ArrowLeft, ShieldAlert, Maximize2, Minimize2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useSecurity } from '@/components/providers/SecurityProvider';
 
+import { authFetch, BASE_URL } from '@/lib/api';
+
 const FaceDetection = dynamic(() => import('@/components/exam/FaceDetection'), { ssr: false });
 
 function Timer({ totalSeconds, onTimeUp }) {
@@ -79,7 +81,7 @@ export default function AptitudePage() {
         usedHint: !!hintsUsed[q.id]
       }));
       
-      const res = await fetch('http://localhost:5001/aptitude/submit', {
+      const res = await fetch(`${BASE_URL}/aptitude/submit`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -162,7 +164,7 @@ export default function AptitudePage() {
     
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:5001/aptitude/generate', {
+      const res = await fetch(`${BASE_URL}/aptitude/generate`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',

@@ -29,19 +29,21 @@ export class InterviewService {
     }));
   }
 
-  async analyzeResponse(question: string, answer: string): Promise<any> {
+  async analyzeResponse(question: string, answer: string, context: any): Promise<any> {
     if (!answer || answer.trim().length < 10) {
       return {
         success: true,
         score: 0,
+        technicalConsistency: 'N/A',
+        communication: 'No response',
         analysis: 'No meaningful response provided.',
         followUp: 'Could you please elaborate on your answer?',
         strengths: [],
-        improvements: ['Provide a detailed response', 'Use the STAR method for behavioral questions']
+        improvements: ['Provide a detailed response']
       };
     }
 
-    const analysis = await this.aiService.evaluateInterviewResponse(question, answer);
+    const analysis = await this.aiService.evaluateInterviewResponse(question, answer, context);
     return { success: true, ...analysis };
   }
 }

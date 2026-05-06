@@ -10,13 +10,14 @@ import { ArrowLeft, ShieldAlert, Maximize2, Minimize2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '@/components/ui/Modal';
 import { useSecurity } from '@/components/providers/SecurityProvider';
+import { authFetch, BASE_URL } from '@/lib/api';
 
 const FaceDetection = dynamic(() => import('@/components/exam/FaceDetection'), { ssr: false });
 
 
 const DIFF_COLORS = { easy: '#10b981', medium: '#f59e0b', hard: '#ef4444' };
 const LANG_LABELS = { javascript: 'JavaScript', python: 'Python', java: 'Java', cpp: 'C++' };
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+const API_BASE = BASE_URL;
 
 export default function CodingPage() {
   const router = useRouter();

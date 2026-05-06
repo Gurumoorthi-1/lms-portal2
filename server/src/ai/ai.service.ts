@@ -529,15 +529,14 @@ Question Asked: ${question}
 Candidate's Answer: ${answer}
 (Cross-reference Context: ${JSON.stringify(context || {})})
 
-[EVALUATION CRITERIA]
-1. Technical Consistency: Does their verbal explanation match their coding round performance or general technical standards?
-2. Communication: Rate their clarity, confidence, and ability to stay on point.
-3. Problem Solving: How they approach the 'What If' scenarios.
-4. Actionable Advice: Identify exactly where they need to improve (e.g., 'Needs to work on Database Indexing concepts').
+[EVALUATION CRITERIA & SCORING RUBRIC]
+- 2 Marks: The answer is technically accurate, clear, and perfectly addresses the question.
+- 1 Mark: The answer is relevant but lacks detail, or has minor technical inaccuracies.
+- 0 Marks: The answer is irrelevant, incorrect, or "idk/no idea" style responses.
 
 Return ONLY valid JSON in this format:
 {
-  "score": <0-10>,
+  "score": <0, 1, or 2 strictly based on the rubric above>,
   "technicalConsistency": "assessment paragraph",
   "communication": "assessment paragraph",
   "problemSolving": "assessment paragraph",

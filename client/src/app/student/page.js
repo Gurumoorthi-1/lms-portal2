@@ -226,6 +226,7 @@ export default function StudentDashboard() {
         // Merge progress data into stats
         const mergedStats = {
           ...statsData,
+          reports: progressData.reports || {},
           totalXP: progressData.points || 0,
           solvedProblems: progressData.solvedProblems?.length || 0,
           solvedChallenges: progressData.solvedChallenges?.length || 0,
@@ -322,7 +323,7 @@ export default function StudentDashboard() {
           />
         ) : (
           <>
-            {stats?.currentStage === 'FINISHED' && (
+            {stats?.currentStage === 'FINISHED' && !user?.institutionId && (
               <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} 
                 className="bg-gradient-to-r from-indigo-900 to-purple-900 rounded-3xl p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl border border-indigo-500/20">
                 <div className="flex items-center gap-5 text-white">
@@ -395,72 +396,62 @@ export default function StudentDashboard() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {['MCQ', 'Aptitude', 'Coding', 'HR Interview'].map((stage, idx) => (
-                    <motion.div
-                      key={stage}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.1 * idx }}
-                      className="bg-white border border-[#E2E8F0] rounded-2xl p-6 shadow-sm hover:shadow-md transition-all group"
-                    >
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-[#2563EB] group-hover:bg-[#2563EB] group-hover:text-white transition-colors">
-                            <Target size={20} />
-                          </div>
-                          <h3 className="font-bold text-[#0F172A]">{stage} Round</h3>
-                        </div>
-                        <button 
-                          onClick={async () => {
-                            try {
-                              const res = await authFetch('/progress/reports');
-                              const reports = await res.json();
-                              const report = reports[stage.toLowerCase().replace(' ', '')];
-                              
-                              if (!report) {
-                                toast.error('Report not generated yet. Finish the round to see analysis.');
-                                return;
-                              }
+                  {[
+                    { label: 'MCQ', key: 'mcq' },
+                    { label: 'Aptitude', key: 'aptitude' },
+                    { label: 'Coding', key: 'coding' },
+                    { label: 'HR Interview', key: 'hrInterview' }
+                  ].map((stage, idx) => {
+                    // Extract report data for this stage
+                    const reportData = stats?.reports?.[stage.key] || null;
 
-                              // Basic download logic for demo
-                              const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
-                              const url = window.URL.createObjectURL(blob);
-                              const a = document.createElement('a');
-                              a.href = url;
-                              a.download = `${stage}_Report.json`;
-                              a.click();
-                              toast.success('Report downloaded successfully!');
-                            } catch (e) {
-                              toast.error('Failed to fetch report.');
-                            }
-                          }}
-                          className="text-xs font-bold text-[#2563EB] hover:underline flex items-center gap-1"
-                        >
-                          <Play size={14} className="rotate-90" /> Download PDF
-                        </button>
-                      </div>
-                      
-                      <div className="space-y-4">
-                        <div className="p-3 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0]">
-                          <p className="text-xs text-[#64748B] font-bold uppercase mb-1">AI Verdict</p>
-                          <p className="text-sm text-[#334155] font-medium leading-relaxed italic">
-                            "Finish this round to receive personalized AI feedback on your performance, strengths, and areas for improvement."
-                          </p>
+                    return (
+                      <motion.div
+                        key={stage.label}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.1 * idx }}
+                        onClick={() => router.push(`/student/institutional-report?stage=${stage.label}`)}
+                        className="bg-white border border-[#E2E8F0] rounded-2xl p-6 shadow-sm hover:shadow-md transition-all group cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-[#2563EB] group-hover:bg-[#2563EB] group-hover:text-white transition-colors">
+                              <Target size={20} />
+                            </div>
+                            <h3 className="font-bold text-[#0F172A]">{stage.label} Round</h3>
+                          </div>
+                          <div className="text-xs font-bold text-[#2563EB] hover:underline flex items-center gap-1">
+                             View Details <ArrowRight size={14} />
+                          </div>
                         </div>
                         
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="text-center p-2 bg-green-50 rounded-lg border border-green-100">
-                            <div className="text-[10px] font-black text-green-600 uppercase">Status</div>
-                            <div className="text-sm font-bold text-green-700">Pending</div>
+                        <div className="space-y-4">
+                          <div className="p-3 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0]">
+                            <p className="text-xs text-[#64748B] font-bold uppercase mb-1">AI Verdict</p>
+                            <p className="text-sm text-[#334155] font-medium leading-relaxed italic line-clamp-2">
+                              {reportData?.performance || "Finish this round to receive personalized AI feedback on your performance."}
+                            </p>
                           </div>
-                          <div className="text-center p-2 bg-blue-50 rounded-lg border border-blue-100">
-                            <div className="text-[10px] font-black text-blue-600 uppercase">Score</div>
-                            <div className="text-sm font-bold text-blue-700">--</div>
+                          
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className={`text-center p-2 rounded-lg border ${reportData ? 'bg-green-50 border-green-100' : 'bg-slate-50 border-slate-100'}`}>
+                              <div className={`text-[10px] font-black uppercase ${reportData ? 'text-green-600' : 'text-slate-400'}`}>Status</div>
+                              <div className={`text-sm font-bold ${reportData ? 'text-green-700' : 'text-slate-500'}`}>
+                                {reportData?.status || 'Pending'}
+                              </div>
+                            </div>
+                            <div className={`text-center p-2 rounded-lg border ${reportData ? 'bg-blue-50 border-blue-100' : 'bg-slate-50 border-slate-100'}`}>
+                              <div className={`text-[10px] font-black uppercase ${reportData ? 'text-blue-600' : 'text-slate-400'}`}>Score</div>
+                              <div className={`text-sm font-bold ${reportData ? 'text-blue-700' : 'text-slate-500'}`}>
+                                {reportData?.score ? `${reportData.score}%` : '--'}
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </motion.div>
-                  ))}
+                      </motion.div>
+                    );
+                  })}
                 </div>
               </div>
             )}
