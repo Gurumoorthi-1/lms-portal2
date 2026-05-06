@@ -259,8 +259,9 @@ export class ProgressService {
         realScore = context['mcq']?.score ?? null;
         realStatus = context['mcq']?.status || (realScore !== null && realScore >= 50 ? 'PASSED' : 'FAILED');
       } else if (stage === 'aptitude') {
-        realScore = context['aptitude']?.score ?? null;
-        realStatus = context['aptitude']?.status || (realScore !== null && realScore >= 50 ? 'PASSED' : 'FAILED');
+        const aptData = context['aptitude'] || {};
+        realScore = aptData.percentage ?? aptData.score ?? null;
+        realStatus = aptData.passed !== undefined ? (aptData.passed ? 'PASSED' : 'FAILED') : (realScore !== null && realScore >= 60 ? 'PASSED' : 'FAILED');
       } else if (stage === 'hrInterview') {
         const interviewData = context['interview'] || {};
         // Use percentScore (0-100) for consistent reporting; fall back to calculating from totalScore/maxScore

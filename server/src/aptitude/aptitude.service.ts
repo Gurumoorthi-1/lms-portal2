@@ -92,7 +92,7 @@ export class AptitudeService {
     }
 
     const percentage = maxScore > 0 ? (rawScore / maxScore) * 100 : 0;
-    const passed = percentage >= 50;
+    const passed = percentage >= 60;
 
     return {
       success: true,
@@ -101,7 +101,7 @@ export class AptitudeService {
       percentage: Math.round(percentage),
       passed,
       processedAnswers,
-      message: passed ? 'Congratulations! You passed the Aptitude round.' : 'You did not pass the Aptitude round.'
+      message: passed ? 'Congratulations! You passed the Aptitude round.' : 'You did not pass the Aptitude round (Requires 60% or above).'
     };
   }
 }

@@ -20,8 +20,22 @@ export default function ProctoringPanel({ videoRef, cameraReady, warnings, permi
           Camera permission denied. Please allow camera access.
         </div>
       ) : (
-        <FaceDetection mode="panel" onViolation={handleViolation} videoRef={videoRef} />
+        <FaceDetection 
+          mode="panel" 
+          onViolation={handleViolation} 
+          videoRef={videoRef} 
+        />
       )}
+      
+      <div className="mt-3 flex items-center justify-between px-1">
+        <div className="flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${cameraReady ? 'bg-emerald-500 animate-pulse' : 'bg-gray-300'}`} />
+          <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">AI Monitor</span>
+        </div>
+        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${totalViolations > 0 ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600'}`}>
+          {totalViolations > 0 ? 'Status: Warning' : 'Status: Secured'}
+        </span>
+      </div>
       
       <div className="space-y-1">
         <p className="text-xs text-gray-500">Warnings: <span className="font-bold text-red-500">{totalViolations}/5</span></p>

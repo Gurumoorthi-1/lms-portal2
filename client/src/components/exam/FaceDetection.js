@@ -140,19 +140,37 @@ const FaceDetection = ({
       else if (isLookingAway) onViolation?.('Maintain focus on screen', 'warning', 'looking_away');
 
       if (faceCount === 0) {
-        setMissingFaceTimer(prev => prev + 2);
-        if (missingFaceTimer >= 5) onViolation?.('Face presence required', 'severe', 'face_hidden');
+        setMissingFaceTimer(prev => prev + 1);
+        // More lenient threshold for face presence during conversational round
+        if (missingFaceTimer >= 10) {
+          onViolation?.('Face presence required', 'severe', 'face_hidden');
+        }
       } else {
         setMissingFaceTimer(0);
       }
     } catch (err) { /* Skip frames silently */ }
   }, [modelLoaded, isCameraActive, missingFaceTimer, onViolation]);
 
+  // 4. Protection Period: Wait 10 seconds after camera starts before reporting ANY violations
+  const [isProtected, setIsProtected] = useState(true);
+  useEffect(() => {
+    if (isCameraActive) {
+      const timer = setTimeout(() => setIsProtected(false), 10000); // 10s warm-up
+      return () => clearTimeout(timer);
+    } else {
+      setIsProtected(true);
+    }
+  }, [isCameraActive]);
+
   useEffect(() => {
     let interval;
-    if (isCameraActive) interval = setInterval(runProctoring, 2000);
+    if (isCameraActive) {
+      interval = setInterval(() => {
+        if (!isProtected) runProctoring();
+      }, 2000);
+    }
     return () => clearInterval(interval);
-  }, [isCameraActive, runProctoring]);
+  }, [isCameraActive, isProtected, runProctoring]);
 
   useEffect(() => {
     if (mode === 'gate' && detectionState.facePresent) {

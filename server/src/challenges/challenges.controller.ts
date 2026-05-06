@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ProgressGuard, RequireStage } from '../progress/progress.guard';
 import { AssessmentStage } from '../progress/progress.schema';
 import { ProgressService } from '../progress/progress.service';
+import { CompilerService } from '../compiler/compiler.service';
 
 @Controller('challenges')
 export class ChallengesController {
@@ -12,6 +13,7 @@ export class ChallengesController {
     private readonly challengesService: ChallengesService,
     private readonly aiService: AiService,
     private readonly progressService: ProgressService,
+    private readonly compilerService: CompilerService,
   ) {}
 
   @Get()
@@ -73,6 +75,51 @@ export class ChallengesController {
     }
 
     return evaluation;
+  }
+
+  @Post('submit-tests')
+  @UseGuards(JwtAuthGuard, ProgressGuard)
+  @RequireStage(AssessmentStage.CODING)
+  async submitTests(@Request() req: any, @Body() body: { problemId: string, language: string, code: string, testCases: any[] }) {
+    const results: any[] = [];
+    let passedCount = 0;
+
+    for (const tc of body.testCases) {
+      const exec = await this.compilerService.executeCode(body.language, body.code, tc.input || '');
+      const actual = (exec.output || '').trim();
+      const expected = (tc.expectedOutput || '').trim();
+      const isPassed = actual === expected;
+      
+      if (isPassed) passedCount++;
+      
+      results.push({
+        input: tc.input,
+        expectedOutput: expected,
+        actualOutput: actual,
+        passed: isPassed
+      });
+    }
+
+    const scorePercent = Math.round((passedCount / body.testCases.length) * 100);
+    
+    // Auto-update progress context
+    await this.progressService.updateContext(req.user.userId, 'coding', {
+      problemId: body.problemId,
+      results,
+      passedCount,
+      totalCount: body.testCases.length,
+      scorePercent,
+      passed: scorePercent >= 60
+    });
+
+    return {
+      success: true,
+      results,
+      passedCount,
+      totalCount: body.testCases.length,
+      scorePercent,
+      passed: scorePercent >= 60
+    };
   }
 
   @Get(':id')

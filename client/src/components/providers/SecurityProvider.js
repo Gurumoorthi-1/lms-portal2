@@ -24,6 +24,7 @@ export const SecurityProvider = ({ children }) => {
     maxCritical: 2,
     enabled: false
   });
+  const lastToastTimeRef = useRef({});
 
   const startSecurity = useCallback((options) => {
     console.log('🛡️ Security Orchestrator: Starting session', options.sessionId);
@@ -79,15 +80,20 @@ export const SecurityProvider = ({ children }) => {
 
     setViolations(prev => [...prev, newViolation]);
 
-    // Toast Notification
-    if (severity === 'critical') {
-      toast.error(message, { 
-        icon: '🚨', 
-        duration: 5000,
-        style: { border: '2px solid #ef4444', background: '#fef2f2' }
-      });
-    } else {
-      toast.error(message, { icon: '⚠️' });
+    // Toast Notification (with 5s cooldown to prevent spam)
+    const toastKey = `violation-${type}`;
+    if (!lastToastTimeRef.current[type] || now - lastToastTimeRef.current[type] > 5000) {
+      if (severity === 'critical') {
+        toast.error(message, { 
+          id: toastKey,
+          icon: '🚨', 
+          duration: 5000,
+          style: { border: '2px solid #ef4444', background: '#fef2f2' }
+        });
+      } else {
+        toast.error(message, { id: toastKey, icon: '⚠️' });
+      }
+      lastToastTimeRef.current = { ...lastToastTimeRef.current, [type]: now };
     }
 
     // Backend Sync
@@ -110,7 +116,8 @@ export const SecurityProvider = ({ children }) => {
 
     const handleVisibility = () => {
       if (document.hidden) {
-        reportViolation('tab_switch', 'Tab switching detected! This event has been logged.', 'critical');
+        const severity = config.round === 'coding' ? 'critical' : 'warning';
+        reportViolation('tab_switch', 'Tab switching detected! This event has been logged.', severity);
       }
     };
 

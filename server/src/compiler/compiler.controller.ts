@@ -8,19 +8,15 @@ export class CompilerController {
   constructor(private readonly compilerService: CompilerService) {}
 
   @Post('run')
-  async runCode(
-    @Body() body: any
-  ) {
-    console.log('🚀 Compiler Run Request:', body);
+  async runCode(@Body() body: any) {
     const { language, code, input } = body;
-    if (!language) {
-      throw new BadRequestException('Language is required');
-    }
-    if (!code || !code.trim()) {
-      throw new BadRequestException('Code cannot be empty');
-    }
-
-    // Call service to run code
+    if (!language || !code) throw new BadRequestException('Missing language or code');
     return await this.compilerService.executeCode(language, code, input || '');
+  }
+
+  @Post('execute')
+  async execute(@Body() body: { language: string, code: string, input_data: string }) {
+    if (!body.language || !body.code) throw new BadRequestException('Missing language or code');
+    return await this.compilerService.executeCode(body.language, body.code, body.input_data || '');
   }
 }

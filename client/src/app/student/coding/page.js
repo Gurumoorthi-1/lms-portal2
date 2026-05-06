@@ -146,15 +146,20 @@ export default function CodingPage() {
     setCode(starter);
   };
 
-  const handleRun = async () => {
+  const [customInput, setCustomInput] = useState('');
+  const [testResults, setTestResults] = useState(null);
+  const [terminalTab, setTerminalTab] = useState('results'); // 'results' | 'custom'
+
+  const handleRunCustom = async () => {
     if (!activeProblem || !code.trim()) return;
     setRunning(true);
     setRunResults(null);
+    setTerminalTab('results');
     try {
-      const res = await fetch(`${API_BASE}/compiler/run`, {
+      const res = await fetch(`${API_BASE}/compiler/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ language: detectedLanguage, code, input: '' })
+        body: JSON.stringify({ language: detectedLanguage, code, input_data: customInput })
       });
       const data = await res.json();
       setRunResults({ ...data, type: 'run', passed: data.success });
@@ -165,10 +170,53 @@ export default function CodingPage() {
     }
   };
 
+  const handleRunAllTests = async () => {
+    if (!activeProblem || !code.trim()) return;
+    setRunning(true);
+    setTestResults(null);
+    setTerminalTab('results');
+    try {
+      const tcs = (activeProblem.testCases || []).slice(0, 5); // Ensure 5 test cases
+      const res = await fetch(`${API_BASE}/challenges/submit-tests`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ 
+          problemId: activeProblem.id, 
+          language: detectedLanguage, 
+          code, 
+          testCases: tcs 
+        })
+      });
+      const data = await res.json();
+      setTestResults(data);
+    } catch (err) {
+      toast.error('Test execution failed');
+    } finally {
+      setRunning(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!activeProblem || !code.trim()) return;
     setSubmitting(true);
     try {
+      // First run all tests to get the most accurate data
+      const tcs = (activeProblem.testCases || []).slice(0, 5);
+      const testRes = await fetch(`${API_BASE}/challenges/submit-tests`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ problemId: activeProblem.id, language: detectedLanguage, code, testCases: tcs })
+      });
+      const testData = await testRes.json();
+      setTestResults(testData);
+
+      // Then call the AI evaluation for feedback
       const res = await fetch(`${API_BASE}/challenges/evaluate-ai`, {
         method: 'POST',
         headers: { 
@@ -179,14 +227,13 @@ export default function CodingPage() {
       });
       const data = await res.json();
 
-      // Persist the new token to allow stage-based navigation to HR Interview
       if (data.newToken) {
         localStorage.setItem('token', data.newToken);
         document.cookie = `token=${data.newToken}; path=/; max-age=86400; SameSite=Lax`;
-        toast.success('Coding challenge accepted! Stage promoted.');
+        toast.success('Coding challenge accepted!');
       }
 
-      setSubmissions(prev => ({ ...prev, [activeProblem.id]: data }));
+      setSubmissions(prev => ({ ...prev, [activeProblem.id]: { ...data, ...testData } }));
       setRunResults({ ...data, type: 'submit' });
     } catch (err) {
       setRunResults({ error: err.message, type: 'submit' });
@@ -223,30 +270,32 @@ export default function CodingPage() {
     window.location.href = '/student/interview';
   };
 
-  // ── Tab Switch Termination Logic (15s) ──
+  // ── Tab Switch Termination Logic (15s Cumulative) ──
+  const [accumulatedAwayTime, setAccumulatedAwayTime] = useState(0);
+  const awayTimerRef = useRef(null);
+  
   useEffect(() => {
     if (showGate || isDisqualified || loading) return;
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden' || !document.hasFocus()) {
-        if (tabSwitchTimer) return; // Already tracking
-
-        const start = Date.now();
-        const timer = setInterval(() => {
-          const elapsed = Math.floor((Date.now() - start) / 1000);
-          setAwayTime(elapsed);
-          if (elapsed >= 15) {
-            clearInterval(timer);
-            // DIRECT TERMINATION: Bypasses violation counts
-            reportViolation('tab_switch_timeout', 'Session terminated: Left assessment for > 15 seconds.', 'critical');
-          }
-        }, 1000);
-        setTabSwitchTimer(timer);
+      if (document.hidden || !document.hasFocus()) {
+        if (!awayTimerRef.current) {
+          awayTimerRef.current = setInterval(() => {
+            setAccumulatedAwayTime(prev => {
+              const newVal = prev + 1;
+              if (newVal >= 15) {
+                clearInterval(awayTimerRef.current);
+                awayTimerRef.current = null;
+                reportViolation('tab_switch_timeout', 'Session terminated: Left assessment for > 15 cumulative seconds.', 'critical');
+              }
+              return newVal;
+            });
+          }, 1000);
+        }
       } else {
-        if (tabSwitchTimer) {
-          clearInterval(tabSwitchTimer);
-          setTabSwitchTimer(null);
-          setAwayTime(0);
+        if (awayTimerRef.current) {
+          clearInterval(awayTimerRef.current);
+          awayTimerRef.current = null;
         }
       }
     };
@@ -258,10 +307,13 @@ export default function CodingPage() {
     return () => {
       window.removeEventListener('blur', handleVisibilityChange);
       window.removeEventListener('focus', handleVisibilityChange);
-      document.addEventListener('visibilitychange', handleVisibilityChange);
-      if (tabSwitchTimer) clearInterval(tabSwitchTimer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (awayTimerRef.current) {
+        clearInterval(awayTimerRef.current);
+        awayTimerRef.current = null;
+      }
     };
-  }, [showGate, isDisqualified, loading, tabSwitchTimer, reportViolation]);
+  }, [showGate, isDisqualified, loading, reportViolation]);
 
   const solvedCount = Object.values(submissions).filter(s => s.passed).length;
 
@@ -382,10 +434,10 @@ export default function CodingPage() {
              </div>
              <div className="w-px h-3 bg-gray-700" />
              <div className="text-gray-400 uppercase tracking-tighter whitespace-nowrap">Violations: <span className={totalViolations > 0 ? 'text-red-500' : ''}>{totalViolations}/3</span></div>
-             {awayTime > 0 && (
+             {accumulatedAwayTime > 0 && (
                <>
                  <div className="w-px h-3 bg-gray-700" />
-                 <div className="text-rose-500 font-black uppercase tracking-tighter animate-pulse">TERMINATING IN: {15 - awayTime}s</div>
+                 <div className="text-rose-500 font-black uppercase tracking-tighter animate-pulse">TERMINATING IN: {15 - accumulatedAwayTime}s</div>
                </>
              )}
           </div>
@@ -443,63 +495,165 @@ export default function CodingPage() {
                 ))}
               </div>
 
-              <div className="p-3 rounded-lg bg-gray-800 border border-gray-700">
+              <div className="p-3 rounded-lg bg-gray-800 border border-gray-700 mb-6">
                 <p className="text-xs font-bold text-blue-400 mb-2">CONSTRAINTS</p>
                 {(activeProblem.constraints || []).map((c, i) => (
                   <p key={i} className="text-xs text-gray-400 font-mono">• {c}</p>
                 ))}
               </div>
+
+              {/* NEW: Side-bar Test Cases */}
+              <div className="space-y-4">
+                 <div className="flex items-center justify-between border-b border-gray-700 pb-2">
+                    <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Test Cases (5)</h3>
+                 </div>
+                 <div className="space-y-3">
+                    {(activeProblem.testCases || []).map((tc, i) => (
+                       <div key={i} className="p-3 rounded-xl bg-black/20 border border-white/5 space-y-2">
+                          <div className="flex items-center justify-between">
+                             <span className="text-[10px] font-black text-gray-500 uppercase">Case {i + 1}</span>
+                             <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${
+                                tc.difficulty === 'easy' ? 'bg-emerald-500/10 text-emerald-500' :
+                                tc.difficulty === 'medium' ? 'bg-amber-500/10 text-amber-500' : 'bg-rose-500/10 text-rose-500'
+                             }`}>
+                                {tc.difficulty || 'easy'}
+                             </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                             <div>
+                                <div className="text-gray-600 mb-1">INPUT</div>
+                                <div className="text-gray-300 truncate" title={tc.input}>{tc.input}</div>
+                             </div>
+                             <div>
+                                <div className="text-gray-600 mb-1">EXPECTED</div>
+                                <div className="text-emerald-500 truncate" title={tc.expectedOutput}>{tc.expectedOutput}</div>
+                             </div>
+                          </div>
+                       </div>
+                    ))}
+                 </div>
+              </div>
             </div>
 
             <div className="flex-1 flex flex-col overflow-hidden bg-gray-950">
-              <div className="bg-gray-800 px-4 py-2 flex items-center justify-end gap-2 border-b border-gray-700">
-                <button onClick={handleRun} disabled={running || submitting}
-                  className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white bg-gray-600 hover:bg-gray-500 disabled:opacity-40">
-                  {running ? '⏳ Running...' : '▶ Run'}
-                </button>
-                <button onClick={handleSubmit} disabled={running || submitting}
-                  className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white bg-orange-500 disabled:opacity-40">
-                  {submitting ? '⏳ Submitting...' : '✓ Submit AI Eval'}
-                </button>
-                <div className="w-px h-4 bg-gray-700 mx-1" />
-                <button onClick={handleComplete}
-                  className="px-4 py-1.5 rounded-lg text-white text-sm font-bold bg-emerald-600 hover:bg-emerald-500 transition-colors shadow-lg shadow-emerald-900/20">
-                  Finish Round →
-                </button>
+              <div className="bg-gray-800 px-4 py-2 flex items-center justify-between border-b border-gray-700">
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => setTerminalTab('results')}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${terminalTab === 'results' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                  >
+                    Terminal & Results
+                  </button>
+                  <button 
+                    onClick={() => setTerminalTab('custom')}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${terminalTab === 'custom' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                  >
+                    Custom Input
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={handleRunCustom} disabled={running || submitting}
+                    className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white bg-gray-600 hover:bg-gray-500 disabled:opacity-40">
+                    {running ? '⏳ Running...' : '▶ Run Code'}
+                  </button>
+                  <button onClick={handleRunAllTests} disabled={running || submitting}
+                    className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40">
+                    Run All Tests
+                  </button>
+                  <button onClick={handleSubmit} disabled={running || submitting}
+                    className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white bg-orange-500 disabled:opacity-40">
+                    {submitting ? '⏳ Submitting...' : '✓ Submit AI Eval'}
+                  </button>
+                  <div className="w-px h-4 bg-gray-700 mx-1" />
+                  <button onClick={handleComplete}
+                    className="px-4 py-1.5 rounded-lg text-white text-sm font-bold bg-emerald-600 hover:bg-emerald-500 transition-colors shadow-lg shadow-emerald-900/20">
+                    Finish Round →
+                  </button>
+                </div>
               </div>
 
-              <div className="flex-1 overflow-hidden" style={{ minHeight: '300px' }}>
-                <CodeEditor value={code} onChange={v => setCode(v)} language={detectedLanguage} blockPaste={true} />
-              </div>
+              <div className="flex-1 overflow-hidden flex flex-col" style={{ minHeight: '300px' }}>
+                <div className="flex-1 overflow-hidden">
+                  <CodeEditor value={code} onChange={v => setCode(v)} language={detectedLanguage} blockPaste={true} />
+                </div>
 
-              <AnimatePresence>
-                {runResults && (
-                  <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                    className="border-t border-gray-700 bg-gray-900 overflow-y-auto" style={{ maxHeight: '200px' }}>
-                    <div className="p-4">
-                      {runResults.error ? (
-                        <div className="text-red-400 text-sm font-mono">{runResults.error}</div>
-                      ) : (
-                        <>
-                          <div className="flex items-center gap-3 mb-3">
-                            <span className={`font-bold text-sm ${runResults.passed ? 'text-green-400' : 'text-red-400'}`}>
-                              {runResults.type === 'submit'
-                                ? `${runResults.passed ? '✅ Accepted' : '❌ Failed'} — AI Evaluated`
-                                : `${runResults.success ? '✅ Run Success' : '❌ Run Error'}`}
-                            </span>
-                          </div>
-                          {runResults.type === 'submit' && (
-                            <p className="text-gray-300 text-sm">{runResults.feedback}</p>
-                          )}
-                          {runResults.type === 'run' && (
-                            <pre className="text-xs text-gray-300 font-mono">{runResults.output || runResults.message || 'No output'}</pre>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </motion.div>
+                {terminalTab === 'custom' && (
+                  <div className="h-40 bg-gray-900 border-t border-gray-700 p-4 flex flex-col">
+                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Manual Input Data</label>
+                    <textarea 
+                      value={customInput}
+                      onChange={(e) => setCustomInput(e.target.value)}
+                      placeholder="Enter input values here (e.g. 5, 10)..."
+                      className="flex-1 bg-gray-800 text-white font-mono text-sm p-3 rounded-lg border border-gray-700 focus:border-orange-500 outline-none resize-none"
+                    />
+                  </div>
                 )}
-              </AnimatePresence>
+
+                <AnimatePresence>
+                  {(runResults || testResults) && terminalTab === 'results' && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+                      className="border-t border-gray-700 bg-gray-900 overflow-y-auto" style={{ maxHeight: '250px' }}>
+                      <div className="p-4 space-y-4">
+                        {/* Test Case Suite Results */}
+                        {testResults && (
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                               <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Test Suite Results ({testResults.passedCount}/{testResults.totalCount})</h3>
+                               <span className={`text-xs font-bold ${testResults.passed ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                 {testResults.passed ? 'OVERALL PASS' : 'OVERALL FAIL'}
+                               </span>
+                            </div>
+                            <div className="grid gap-2">
+                              {(testResults.results || []).map((tr, i) => (
+                                <div key={i} className={`p-3 rounded-xl border ${tr.passed ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-rose-500/5 border-rose-500/20'}`}>
+                                   <div className="flex items-center gap-2 mb-2">
+                                      <div className={`w-2 h-2 rounded-full ${tr.passed ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                                      <span className="text-xs font-bold text-white">Test Case {i + 1}</span>
+                                      <span className={`text-[10px] font-black uppercase ml-auto ${tr.passed ? 'text-emerald-400' : 'text-rose-400'}`}>{tr.passed ? 'Passed' : 'Failed'}</span>
+                                   </div>
+                                   <div className="grid grid-cols-3 gap-4 font-mono text-[11px]">
+                                      <div><div className="text-gray-500 mb-1">Input</div><div className="text-gray-300 bg-black/30 p-1.5 rounded">{tr.input || 'N/A'}</div></div>
+                                      <div><div className="text-gray-500 mb-1">Expected</div><div className="text-emerald-300 bg-black/30 p-1.5 rounded">{tr.expectedOutput}</div></div>
+                                      <div><div className="text-gray-500 mb-1">Actual</div><div className={`${tr.passed ? 'text-emerald-300' : 'text-rose-300'} bg-black/30 p-1.5 rounded`}>{tr.actualOutput}</div></div>
+                                   </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Individual Run/Submit AI Results */}
+                        {runResults && (
+                          <div className="pt-2 border-t border-gray-800">
+                            {runResults.error ? (
+                              <div className="text-red-400 text-sm font-mono p-2 bg-red-900/10 rounded-lg border border-red-900/20">{runResults.error}</div>
+                            ) : (
+                              <div className="bg-black/20 p-3 rounded-xl border border-white/5">
+                                <div className="flex items-center gap-3 mb-2">
+                                  <span className={`font-black text-[10px] uppercase tracking-widest px-2 py-0.5 rounded ${runResults.passed ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                                    {runResults.type === 'submit' ? 'AI Evaluation' : 'Code Execution'}
+                                  </span>
+                                  <span className={`font-bold text-sm ${runResults.passed ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                    {runResults.type === 'submit'
+                                      ? (runResults.passed ? '✓ Solution Accepted' : '✗ Solution Rejected')
+                                      : (runResults.success ? '✓ Successfully Ran' : '✗ Execution Failed')}
+                                  </span>
+                                </div>
+                                {runResults.type === 'submit' && (
+                                  <p className="text-gray-300 text-xs leading-relaxed mt-2 italic">"{runResults.feedback}"</p>
+                                )}
+                                {runResults.type === 'run' && (
+                                  <pre className="text-xs text-gray-300 font-mono bg-black/40 p-3 rounded-lg mt-2 overflow-x-auto">{runResults.output || runResults.message || 'No output'}</pre>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
           </>
         )}

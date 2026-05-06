@@ -395,8 +395,11 @@ Return ONLY valid JSON array (no extra text):
       "${detectedLanguage}": "// starter code in ${detectedLanguage} with function signature"
     },
     "testCases": [
-      {"input": "test input string", "expectedOutput": "expected output", "isHidden": false},
-      {"input": "hidden test", "expectedOutput": "hidden result", "isHidden": true}
+      {"input": "easy input 1", "expectedOutput": "output 1", "difficulty": "easy"},
+      {"input": "easy input 2", "expectedOutput": "output 2", "difficulty": "easy"},
+      {"input": "medium input 1", "expectedOutput": "output 3", "difficulty": "medium"},
+      {"input": "medium input 2", "expectedOutput": "output 4", "difficulty": "medium"},
+      {"input": "hard input 1", "expectedOutput": "output 5", "difficulty": "hard"}
     ],
     "resumeRelevance": "Brief note on why this relates to their background"
   }
