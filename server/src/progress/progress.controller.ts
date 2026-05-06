@@ -46,4 +46,10 @@ export class ProgressController {
   async resetProgress(@Request() req: any) {
     return this.progressService.resetProgress(req.user.userId);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('reports')
+  async getReports(@Request() req: any) {
+    return this.progressService.getReports(req.user.userId);
+  }
 }

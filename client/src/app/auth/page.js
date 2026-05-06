@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Lock, User, Target, ArrowRight, Zap, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, User, Target, ArrowRight, Zap, Eye, EyeOff, Building2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 import { fetchUserFromDB, BASE_URL } from '@/lib/api';
@@ -204,13 +204,22 @@ export default function AuthPage() {
               </div>
             </div>
 
-            <div className="mt-6">
+            <div className="mt-6 flex flex-col gap-3">
               <button
                 onClick={() => { setIsLogin(!isLogin); setError(null); }}
                 className="w-full flex justify-center py-3 px-4 border border-[#E2E8F0] rounded-xl text-sm font-black text-[#0F172A] bg-slate-50 hover:bg-slate-100 transition-colors"
               >
                 {isLogin ? 'Create an account' : 'Sign in to existing account'}
               </button>
+
+              {isLogin && (
+                <button
+                  onClick={() => router.push('/auth/institution')}
+                  className="w-full flex justify-center items-center py-3 px-4 rounded-xl text-sm font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 transition-all gap-2"
+                >
+                  <Building2 size={16} /> Institutional Login
+                </button>
+              )}
             </div>
           </div>
           

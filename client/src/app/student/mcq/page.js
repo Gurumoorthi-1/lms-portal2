@@ -58,17 +58,30 @@ export default function McqPage() {
         // Save the new token to localStorage so Middleware allows next stage
         if (data.newToken) {
           localStorage.setItem('token', data.newToken);
-          
-          // Also set as cookie for middleware
           document.cookie = `token=${data.newToken}; path=/; max-age=86400; SameSite=Lax`;
         }
         
         setShowSuccessModal(true);
         
-        // Auto-redirect after 2.5 seconds as per UX suggestion
+        // Institutional Logic: Redirect to Report page instead of direct next round
+        const userStr = localStorage.getItem('user');
+        const token = localStorage.getItem('token');
+        const user = userStr ? JSON.parse(userStr) : null;
+        
+        // STRICTOR CHECK: Check institutionId from user object OR if token exists and user email is academic
+        const isInstitutional = user?.institutionId || 
+                            user?.email?.toLowerCase().includes('.edu') || 
+                            user?.email?.toLowerCase().includes('@univ.edu');
+
+        console.log('Submission Success. User:', user?.email, 'Is Institutional:', isInstitutional);
+
         setTimeout(() => {
-          router.push(data.nextRound || '/student/resume');
-        }, 2500);
+          if (isInstitutional) {
+            router.push('/student/institutional-report?stage=MCQ');
+          } else {
+            router.push(data.nextRound || '/student/resume');
+          }
+        }, 2000);
       } else {
         toast.error(data.message || "Assessment failed. Please try again.");
       }

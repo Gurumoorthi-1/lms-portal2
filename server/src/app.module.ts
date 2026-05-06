@@ -17,6 +17,7 @@ import { InterviewModule } from './interview/interview.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { CoursesModule } from './courses/courses.module';
 import { ProblemsModule } from './problems/problems.module';
+import { InstitutionModule } from './institution/institution.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { ProblemsModule } from './problems/problems.module';
     InterviewModule,
     AnalyticsModule,
     CoursesModule,
+    InstitutionModule,
   ],
   controllers: [AppController],
   providers: [AppService],

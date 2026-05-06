@@ -29,7 +29,7 @@ export class AuthService {
   }
 
   async login(user: any, currentStage: string = 'MCQ') {
-    const payload = { email: user.email, sub: user._id, currentStage };
+    const payload = { email: user.email, sub: user._id, role: user.role, institutionId: user.institutionId, currentStage };
     return {
       access_token: this.jwtService.sign(payload),
       user: {
@@ -37,6 +37,7 @@ export class AuthService {
         username: user.username,
         email: user.email,
         role: user.role || (user.email.includes('instructor') ? 'instructor' : 'student'),
+        institutionId: user.institutionId,
         xp: user.xp,
         level: user.level,
         currentStage,
@@ -47,8 +48,12 @@ export class AuthService {
   async generateTokenFromUser(userId: string, currentStage: string) {
     const user = await this.userModel.findById(userId);
     if (!user) throw new UnauthorizedException('User not found during token generation');
-    const payload = { email: user.email, sub: user._id, currentStage };
+    const payload = { email: user.email, sub: user._id, role: user.role, institutionId: user.institutionId, currentStage };
     return this.jwtService.sign(payload);
+  }
+
+  async validate(payload: any) {
+    return { userId: payload.sub, email: payload.email, role: payload.role, institutionId: payload.institutionId, currentStage: payload.currentStage };
   }
 
   async validateUser(email: string, pass: string): Promise<any> {
@@ -58,6 +63,20 @@ export class AuthService {
       return user;
     }
     throw new UnauthorizedException('Invalid credentials');
+  }
+
+  async validateInstitutionalUser(institutionId: string, email: string, pass: string): Promise<any> {
+    const normalizedEmail = email.toLowerCase();
+    const user = await this.userModel.findOne({ 
+      email: normalizedEmail,
+      institutionId: institutionId 
+    });
+    
+    if (user && (await bcrypt.compare(pass, user.password as string))) {
+      return user;
+    }
+    
+    throw new UnauthorizedException('Invalid institutional credentials. Please check your Institution ID and login details.');
   }
 
   async getProfile(userId: string): Promise<any> {
@@ -71,6 +90,7 @@ export class AuthService {
       xp: (user as any).xp || 0,
       level: (user as any).level || 1,
       streak: (user as any).streak || 0,
+      institutionId: (user as any).institutionId,
       preferences: (user as any).preferences || {},
     };
   }
@@ -94,6 +114,7 @@ export class AuthService {
       xp: (user as any).xp || 0,
       level: (user as any).level || 1,
       streak: (user as any).streak || 0,
+      institutionId: (user as any).institutionId,
       preferences: (user as any).preferences || {},
     };
   }

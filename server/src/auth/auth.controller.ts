@@ -17,6 +17,13 @@ export class AuthController {
     return this.authService.login(user);
   }
 
+  @Post('institution-login')
+  async institutionLogin(@Body() body: any) {
+    const { institutionId, email, password } = body;
+    const user = await this.authService.validateInstitutionalUser(institutionId, email, password);
+    return this.authService.login(user);
+  }
+
   // Get fresh, live user profile from DB (replaces stale localStorage)
   @UseGuards(AuthGuard('jwt'))
   @Get('me')

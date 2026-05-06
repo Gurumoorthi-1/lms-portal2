@@ -44,6 +44,15 @@ export class Progress extends Document {
 
   @Prop({ default: Date.now })
   lastActivity: Date;
+
+  @Prop({ type: Object, default: {} })
+  reports: {
+    mcq?: any;
+    aptitude?: any;
+    coding?: any;
+    hrInterview?: any;
+    final?: any;
+  };
 }
 
 export const ProgressSchema = SchemaFactory.createForClass(Progress);

@@ -6,6 +6,7 @@ import { CompilerService } from '../compiler/compiler.service';
 import { ChallengesService } from '../challenges/challenges.service';
 import { AuthService } from '../auth/auth.service';
 import { forwardRef, Inject } from '@nestjs/common';
+import { AiService } from '../ai/ai.service';
 
 @Injectable()
 export class ProgressService {
@@ -15,6 +16,7 @@ export class ProgressService {
     private challengesService: ChallengesService,
     @Inject(forwardRef(() => AuthService))
     private authService: AuthService,
+    private aiService: AiService,
   ) {}
 
   async getUserProgress(userId: string) {
@@ -135,6 +137,10 @@ export class ProgressService {
 
       // Issue a new JWT with updated stage
       const newToken = await this.authService.generateTokenFromUser(userId, nextStage);
+
+      // Institutional Feature: Generate report for the stage just finished
+      this.generateInstitutionalReport(userId, progress.currentStage).catch(e => console.error('BG Report Gen Error:', e));
+
       return { progress, newToken };
     }
     return { progress, newToken: null };
@@ -177,6 +183,9 @@ export class ProgressService {
         status: 'PASSED'
       });
 
+      // Institutional Feature: Generate report for MCQ
+      this.generateInstitutionalReport(userId, 'MCQ').catch(e => console.error('BG Report Gen Error:', e));
+
       const result = await this.moveToNextStage(userId, AssessmentStage.MCQ);
       return {
         success: true,
@@ -213,5 +222,53 @@ export class ProgressService {
 
     const newToken = await this.authService.generateTokenFromUser(userId, AssessmentStage.MCQ);
     return { success: true, newToken, stage: AssessmentStage.MCQ };
+  }
+
+  async generateInstitutionalReport(userId: string, stage: string) {
+    const user = await this.authService.getProfile(userId);
+    if (!user.institutionId) return null; // Only for institutional users
+
+    const progress = await this.getUserProgress(userId);
+    const context = progress.context || {};
+    
+    // Use AI to generate a professional performance report based on the stage data
+    const prompt = `Act as an AI Academic Counselor. Generate a performance report for a student who just finished the ${stage} round.
+    Data: ${JSON.stringify(context[stage.toLowerCase()] || {})}
+    
+    Return ONLY valid JSON:
+    {
+      "performance": "Summary of how they did",
+      "strengths": ["list of strengths"],
+      "weaknesses": ["where they lag"],
+      "improvementTips": ["how to improve"],
+      "score": 85,
+      "generatedAt": "${new Date().toISOString()}"
+    }`;
+
+    try {
+      // Accessing OpenAI via aiService's private openai instance or adding a helper
+      const report = await (this.aiService as any).openai.chat.completions.create({
+        model: 'openai/gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' }
+      });
+
+      const parsedReport = JSON.parse(report.choices[0].message.content);
+      
+      await this.progressModel.findOneAndUpdate(
+        { user: new Types.ObjectId(userId) },
+        { $set: { [`reports.${stage.toLowerCase()}`]: parsedReport } }
+      );
+
+      return parsedReport;
+    } catch (e) {
+      console.error('Failed to generate institutional report:', e);
+      return null;
+    }
+  }
+
+  async getReports(userId: string) {
+    const progress = await this.getUserProgress(userId);
+    return progress.reports || {};
   }
 }

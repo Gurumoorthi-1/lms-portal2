@@ -370,7 +370,7 @@ export default function StudentDashboard() {
                     [...Array(3)].map((_, i) => <SkeletonCard key={i} />)
                  ) : recentExams.length > 0 ? (
                     recentExams.map((exam, i) => (
-                      <ExamCard key={exam._id} exam={exam} index={i} />
+                       <ExamCard key={exam._id} exam={exam} index={i} />
                     ))
                  ) : (
                     <EmptyState 
@@ -380,6 +380,90 @@ export default function StudentDashboard() {
                  )}
                </div>
             </div>
+
+            {/* Institutional Performance Reports */}
+            {user?.institutionId && (
+              <div className="space-y-6 pt-10">
+                <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-4">
+                  <h2 className="text-xl font-bold text-[#0F172A] flex items-center gap-2">
+                    <TrendingUp size={24} className="text-[#2563EB]" />
+                    Institutional Performance Reports
+                  </h2>
+                  <span className="text-xs font-bold px-3 py-1 bg-blue-50 text-blue-600 rounded-full border border-blue-100">
+                    AI Analysis Active
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {['MCQ', 'Aptitude', 'Coding', 'HR Interview'].map((stage, idx) => (
+                    <motion.div
+                      key={stage}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.1 * idx }}
+                      className="bg-white border border-[#E2E8F0] rounded-2xl p-6 shadow-sm hover:shadow-md transition-all group"
+                    >
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-[#2563EB] group-hover:bg-[#2563EB] group-hover:text-white transition-colors">
+                            <Target size={20} />
+                          </div>
+                          <h3 className="font-bold text-[#0F172A]">{stage} Round</h3>
+                        </div>
+                        <button 
+                          onClick={async () => {
+                            try {
+                              const res = await authFetch('/progress/reports');
+                              const reports = await res.json();
+                              const report = reports[stage.toLowerCase().replace(' ', '')];
+                              
+                              if (!report) {
+                                toast.error('Report not generated yet. Finish the round to see analysis.');
+                                return;
+                              }
+
+                              // Basic download logic for demo
+                              const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+                              const url = window.URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = `${stage}_Report.json`;
+                              a.click();
+                              toast.success('Report downloaded successfully!');
+                            } catch (e) {
+                              toast.error('Failed to fetch report.');
+                            }
+                          }}
+                          className="text-xs font-bold text-[#2563EB] hover:underline flex items-center gap-1"
+                        >
+                          <Play size={14} className="rotate-90" /> Download PDF
+                        </button>
+                      </div>
+                      
+                      <div className="space-y-4">
+                        <div className="p-3 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0]">
+                          <p className="text-xs text-[#64748B] font-bold uppercase mb-1">AI Verdict</p>
+                          <p className="text-sm text-[#334155] font-medium leading-relaxed italic">
+                            "Finish this round to receive personalized AI feedback on your performance, strengths, and areas for improvement."
+                          </p>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="text-center p-2 bg-green-50 rounded-lg border border-green-100">
+                            <div className="text-[10px] font-black text-green-600 uppercase">Status</div>
+                            <div className="text-sm font-bold text-green-700">Pending</div>
+                          </div>
+                          <div className="text-center p-2 bg-blue-50 rounded-lg border border-blue-100">
+                            <div className="text-[10px] font-black text-blue-600 uppercase">Score</div>
+                            <div className="text-sm font-bold text-blue-700">--</div>
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

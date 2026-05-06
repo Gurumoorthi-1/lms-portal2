@@ -6,6 +6,7 @@ import { Progress, ProgressSchema } from './progress.schema';
 import { CompilerModule } from '../compiler/compiler.module';
 import { ChallengesModule } from '../challenges/challenges.module';
 import { AuthModule } from '../auth/auth.module';
+import { AiModule } from '../ai/ai.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { AuthModule } from '../auth/auth.module';
     CompilerModule,
     forwardRef(() => ChallengesModule),
     forwardRef(() => AuthModule),
+    AiModule,
   ],
   controllers: [ProgressController],
   providers: [ProgressService],

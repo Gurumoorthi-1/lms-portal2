@@ -29,6 +29,15 @@ export class User extends Document {
     notifications?: any;
     ai?: any;
   };
+
+  @Prop({ type: String })
+  institutionId?: string;
+
+  @Prop({ type: String })
+  institutionName?: string;
+
+  @Prop({ type: String })
+  createdBy?: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

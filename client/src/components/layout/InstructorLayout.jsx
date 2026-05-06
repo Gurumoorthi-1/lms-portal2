@@ -18,7 +18,8 @@ import {
   User,
   LogOut,
   Bell,
-  FileText
+  FileText,
+  Building2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import socket from '@/lib/socket';
@@ -56,6 +57,7 @@ export default function InstructorLayout({ children }) {
     { icon: FilePlus, label: 'Create Exam', href: '/instructor/generate' },
     { icon: FileText, label: 'Exams List', href: '/instructor/exams' },
     { icon: Users, label: 'Students', href: '/instructor/students' },
+    { icon: Building2, label: 'Institution Flow', href: '/instructor/institution-users' },
     { icon: PieChart, label: 'Analytics', href: '/instructor/analytics' },
   ];
 
